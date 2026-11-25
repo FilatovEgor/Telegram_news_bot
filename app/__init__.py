@@ -1,0 +1,1 @@
+"""Telegram News Bot 2.0 application package."""
