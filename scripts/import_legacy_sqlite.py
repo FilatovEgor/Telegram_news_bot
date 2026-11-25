@@ -57,9 +57,7 @@ async def import_rows(rows: list[tuple]) -> tuple[int, int]:
                     skipped += 1
                     continue
                 legacy_status = str(old_status) if old_status is not None else None
-                status = {"Send": "SUMMARIZED", "Del": "REJECTED"}.get(
-                    legacy_status, "DISCOVERED"
-                )
+                status = map_legacy_status(legacy_status)
                 statement = (
                     insert(Article)
                     .values(
@@ -71,6 +69,7 @@ async def import_rows(rows: list[tuple]) -> tuple[int, int]:
                         content="",
                         content_hash=None,
                         status=status,
+                        legacy_row_id=int(legacy_id) if legacy_id is not None else None,
                         legacy_status=legacy_status,
                         legacy_date=str(old_date) if old_date is not None else None,
                         source_metadata={"imported_from": "legacy_sqlite"},
