@@ -1,6 +1,6 @@
 import re
 import unicodedata
-from urllib.parse import urlsplit
+import urllib.parse
 
 from app.ai.schemas import EditorialPackage
 
@@ -58,7 +58,7 @@ def validate_editorial_package(
         if not _entity_in_source(entity, normalized_source)
     )
     try:
-        parsed_url = urlsplit(source_url)
+        parsed_url = urllib.parse.urlsplit(source_url)
         valid_url = parsed_url.scheme in {"http", "https"} and bool(parsed_url.netloc)
     except ValueError:
         valid_url = False
