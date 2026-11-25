@@ -16,10 +16,10 @@ def test_listing_extracts_only_unique_mrc_news_urls():
     assert parse_listing_html(html) == ["https://www.mrc.ru/news/123-test-story"]
 
 
-def test_article_external_id_preserves_encoded_slug():
+def test_article_external_id_preserves_url_slug():
     assert article_external_id(
-        "https://www.mrc.ru/news/411245-lotte-chemical-%E2%84%961"
-    ) == "411245-lotte-chemical-%E2%84%961"
+        "https://www.mrc.ru/news/411245-lotte-chemical-v-fevrale-vozobnovit-proizvodstvo-%E2%84%961"
+    ) == "411245-lotte-chemical-v-fevrale-vozobnovit-proizvodstvo-%E2%84%961"
 
 
 def test_transliteration_and_text_normalization():
