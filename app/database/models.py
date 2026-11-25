@@ -42,6 +42,7 @@ class Article(Base):
     content_hash: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
     status: Mapped[str] = mapped_column(String(32), default=ArticleStatus.DISCOVERED.value, index=True)
     source_published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    legacy_row_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     legacy_status: Mapped[str | None] = mapped_column(String(128), nullable=True)
     legacy_date: Mapped[str | None] = mapped_column(String(128), nullable=True)
     source_metadata: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
