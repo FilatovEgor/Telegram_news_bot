@@ -79,6 +79,7 @@ def editorial_review_keyboard(article_id: uuid.UUID) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🔁 Regenerate", callback_data=f"wf:regen:ru:{key}"),
             ],
             [InlineKeyboardButton(text="📜 Audit log", callback_data=f"wf:history:{key}")],
+            [InlineKeyboardButton(text="⌂ Control deck", callback_data="wf:menu:home")],
         ]
     )
 
@@ -96,6 +97,7 @@ def translation_review_keyboard(article_id: uuid.UUID) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🔁 Re-translate", callback_data=f"wf:regen:en:{key}"),
             ],
             [InlineKeyboardButton(text="📜 Audit log", callback_data=f"wf:history:{key}")],
+            [InlineKeyboardButton(text="⌂ Control deck", callback_data="wf:menu:home")],
         ]
     )
 
@@ -103,7 +105,8 @@ def translation_review_keyboard(article_id: uuid.UUID) -> InlineKeyboardMarkup:
 def _incoming_keyboard(article_id: uuid.UUID) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🧠 Generate AI draft", callback_data=f"wf:draft:{article_id}")]
+            [InlineKeyboardButton(text="🧠 Generate AI draft", callback_data=f"wf:draft:{article_id}")],
+            [InlineKeyboardButton(text="⌂ Control deck", callback_data="wf:menu:home")],
         ]
     )
 
@@ -116,7 +119,8 @@ def _queue_open_keyboard(article_id: uuid.UUID, language: str) -> InlineKeyboard
                     text="🔎 Open review",
                     callback_data=f"wf:open:{language}:{article_id}",
                 )
-            ]
+            ],
+            [InlineKeyboardButton(text="⌂ Control deck", callback_data="wf:menu:home")],
         ]
     )
 
