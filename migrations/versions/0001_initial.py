@@ -32,6 +32,7 @@ def upgrade() -> None:
         sa.Column("content_hash", sa.String(64)),
         sa.Column("status", sa.String(32), nullable=False),
         sa.Column("source_published_at", sa.DateTime(timezone=True)),
+        sa.Column("legacy_row_id", sa.Integer()),
         sa.Column("legacy_status", sa.String(128)),
         sa.Column("legacy_date", sa.String(128)),
         sa.Column("source_metadata", sa.JSON(), nullable=False),
