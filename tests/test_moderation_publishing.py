@@ -27,14 +27,14 @@ def _package() -> EditorialPackage:
     return EditorialPackage.model_validate(
         {
             "category": "economy",
-            "language": "en",
-            "summary": "Gazprom reported 15% growth in exports in 2024.",
-            "key_points": ["Gazprom reported 15% growth in exports in 2024."],
-            "entities": ["Gazprom"],
+            "language": "ru",
+            "summary": "Газпром сообщил о росте экспорта на 15% в 2024 году.",
+            "key_points": ["Газпром сообщил о росте экспорта на 15% в 2024 году."],
+            "entities": ["Газпром"],
             "important_numbers": ["15%", "2024"],
             "channel_variants": {
-                "telegram": "Gazprom reported 15% growth in exports in 2024.",
-                "brief": "Gazprom grew 15% in 2024.",
+                "telegram": "Газпром сообщил о росте экспорта на 15% в 2024 году.",
+                "brief": "Экспорт вырос на 15% в 2024 году.",
             },
             "caveats": [],
             "confidence": 0.9,
@@ -47,8 +47,8 @@ async def _seed_review_article(sessions, *, failing_numeric_check: bool = False)
     article_id = uuid.uuid4()
     source_key = f"phase4-test-{source_id.hex}"
     package = _package()
-    source_title = "Gazprom exports"
-    source_content = "Gazprom reported 15% growth in exports in 2024."
+    source_title = "Газпром экспорт"
+    source_content = "Газпром сообщил о росте экспорта на 15% в 2024 году."
     validation = validate_editorial_package(
         package,
         source_title=source_title,
@@ -118,10 +118,10 @@ async def test_review_approval_and_publication_are_audited_and_idempotent():
 
         edited = await editorial.edit_telegram_variant(
             article_id,
-            "Gazprom reported 15% export growth in 2024.",
+            "Газпром сообщил о росте экспорта на 15% в 2024 году.",
             actor_telegram_id=actor_id,
         )
-        assert edited.package.channel_variants.telegram.startswith("Gazprom reported")
+        assert edited.package.channel_variants.telegram.startswith("Газпром сообщил")
 
         approved = await editorial.approve_article(article_id, actor_telegram_id=actor_id)
         assert approved.status == "APPROVED"

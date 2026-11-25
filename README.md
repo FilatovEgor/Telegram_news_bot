@@ -15,7 +15,7 @@ A multi-source, AI-assisted editorial and Telegram publishing platform. The uplo
 1. Copy .env.example to .env.
 2. Set BOT_TOKEN, OPENAI_API_KEY, ADMIN_IDS and a strong POSTGRES_PASSWORD.
 3. Configure RSS_FEEDS as comma-separated feed URLs. MRC is enabled by default.
-4. Set PUBLISH_CHANNEL_ID to the destination channel (for example, @channel_name) when publishing is enabled. Add the bot to that channel with permission to post.
+4. Set PUBLISH_CHANNEL_ID for the source-language channel and PUBLISH_CHANNEL_ID_EN for the English channel. Add the bot to both channels with permission to post.
 5. Run docker compose up --build -d.
 6. Follow logs with docker compose logs -f bot.
 
@@ -39,20 +39,22 @@ These automated checks are **source-consistency checks, not independent fact-che
 
 ## Human moderation
 
-- /review lists drafts awaiting moderation; /review ARTICLE_UUID opens the complete preview and inline moderation actions.
+- /review lists source-language drafts awaiting moderation; /review en lists English translations; /review ARTICLE_UUID [ru|en] opens the selected language preview and moderation actions.
 - Editors can edit the Telegram variant with /edit ARTICLE_UUID replacement text. Input is treated as plain text and safely HTML-escaped for Telegram.
 - /regenerate ARTICLE_UUID produces a replacement draft. The former review draft is marked SUPERSEDED only after the replacement succeeds.
 - /approve ARTICLE_UUID approves the latest draft only when all error-level validation checks pass. Non-blocking validation warnings remain visible.
 - /reject ARTICLE_UUID [REASON] rejects the draft and records the reason.
 - /history ARTICLE_UUID displays the append-only audit trail, including actor Telegram IDs, timestamps and action details.
+- /translate ARTICLE_UUID en creates an English translation from the approved Russian editorial package. The English title, summary, key points and channel variants are stored as a separate output.
+- /edit ARTICLE_UUID en TEXT edits the English Telegram variant. /approve ARTICLE_UUID en and /reject ARTICLE_UUID en [REASON] manage the English draft independently from the Russian approval.
 
 All moderation actions are restricted to configured ADMIN_IDS. A moderation decision is never made by the AI.
 
 ## Explicit publishing and duplicate-send protection
 
-Set PUBLISH_CHANNEL_ID and grant the bot permission to post. An administrator must run /publish ARTICLE_UUID explicitly after reviewing and approving the draft. The publishing service checks the article status, the latest approved editorial package and blocking validation results before reserving a send.
+Set PUBLISH_CHANNEL_ID and PUBLISH_CHANNEL_ID_EN and grant the bot permission to post to each destination. An administrator must run /publish ARTICLE_UUID for the source-language post or /publish ARTICLE_UUID en for the English post after separately reviewing and approving each version. The publishing service checks the corresponding approved output and blocking validation results before reserving a send.
 
-The database enforces one publication reservation per article and destination channel. A reservation is persisted as SENDING before calling Telegram. A successful response changes the article and publication to PUBLISHED and records the Telegram message ID. If the Telegram request fails or its outcome is ambiguous, the reservation becomes UNKNOWN (or remains SENDING if the process exits before it can update the database). These states are intentionally not retried automatically: check the channel manually before any operational intervention. This conservative behavior avoids duplicate posts when Telegram accepted a message but the client lost the response.
+Each publication row records its exact AI output and language. The database enforces one publication reservation per article and destination channel. A reservation is persisted as SENDING before calling Telegram. A successful response changes the article and publication to PUBLISHED and records the Telegram message ID. If the Telegram request fails or its outcome is ambiguous, the reservation becomes UNKNOWN (or remains SENDING if the process exits before it can update the database). These states are intentionally not retried automatically: check the channel manually before any operational intervention. This conservative behavior avoids duplicate posts when Telegram accepted a message but the client lost the response.
 
 A message send and a database commit cannot be made one atomic transaction across Telegram and PostgreSQL. The SENDING/UNKNOWN guard therefore favors at-most-once behavior over automatic recovery. Every publish request and outcome is included in /history.
 

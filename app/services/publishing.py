@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.ai.schemas import EditorialPackage
+from app.ai.schemas import EditorialPackage, TranslationPackage
 from app.database.models import AIOutput, Article, ArticleStatus, EditorialAction, Publication
 from app.services.editorial import ArticleNotFoundError, blocking_validation_checks
 
@@ -27,9 +27,10 @@ class PublicationAlreadyAttemptedError(RuntimeError):
 class PublicationPayload:
     output_id: uuid.UUID
     article_id: uuid.UUID
+    language: str
     title: str
+    telegram_text: str
     source_url: str
-    package: EditorialPackage
 
 
 @dataclass(slots=True, frozen=True)
@@ -39,37 +40,46 @@ class PublicationAttempt(PublicationPayload):
 
 
 class PublicationService:
-    """Reserves and records explicit publication attempts; never auto-publishes."""
+    """Reserves explicit language-specific publications; never auto-publishes."""
 
     def __init__(self, session_factory: async_sessionmaker) -> None:
         self._session_factory = session_factory
 
-    async def get_publishable(self, article_id: uuid.UUID) -> PublicationPayload:
+    async def get_publishable(
+        self,
+        article_id: uuid.UUID,
+        language: str = "ru",
+    ) -> PublicationPayload:
         async with self._session_factory() as session:
-            return await self._load_publishable(session, article_id, lock=False)
+            return await self._load_publishable(session, article_id, language, lock=False)
 
     async def _load_publishable(
         self,
         session,
         article_id: uuid.UUID,
+        language: str,
         *,
         lock: bool,
     ) -> PublicationPayload:
+        normalized = language.strip().casefold()
+        if normalized not in {"ru", "en"}:
+            raise PublicationNotAllowedError("Only ru and en publications are enabled")
         article_query = select(Article).where(Article.id == article_id)
         if lock:
             article_query = article_query.with_for_update()
         article = await session.scalar(article_query)
         if article is None:
             raise ArticleNotFoundError("Article was not found")
-        if article.status != ArticleStatus.APPROVED.value:
-            raise PublicationNotAllowedError("Only an explicitly approved article can be published")
 
+        output_type = "editorial_package" if normalized == "ru" else "translation_package"
+        output_statement = select(AIOutput).where(
+            AIOutput.article_id == article_id,
+            AIOutput.output_type == output_type,
+        )
+        if normalized == "en":
+            output_statement = output_statement.where(AIOutput.language == normalized)
         output_query = (
-            select(AIOutput)
-            .where(
-                AIOutput.article_id == article_id,
-                AIOutput.output_type == "editorial_package",
-            )
+            output_statement
             .order_by(AIOutput.created_at.desc(), AIOutput.id.desc())
             .limit(1)
         )
@@ -77,17 +87,38 @@ class PublicationService:
             output_query = output_query.with_for_update()
         output = await session.scalar(output_query)
         if output is None or output.status != "APPROVED":
-            raise PublicationNotAllowedError("The latest editorial package is not approved")
+            raise PublicationNotAllowedError(
+                f"The latest {normalized.upper()} editorial package is not approved"
+            )
+        if normalized == "ru" and article.status not in {
+            ArticleStatus.APPROVED.value,
+            ArticleStatus.PUBLISHED.value,
+        }:
+            raise PublicationNotAllowedError("The Russian article has not been approved")
         blockers = blocking_validation_checks(output.validation_json or {})
         if blockers:
             raise PublicationNotAllowedError("Approved package has failed blocking validation checks")
 
+        if normalized == "ru":
+            package = EditorialPackage.model_validate_json(output.content)
+            if package.language.casefold() not in {"ru", "russian"}:
+                raise PublicationNotAllowedError(
+                    "The approved source editorial package is not in Russian"
+                )
+            title = article.title
+        else:
+            package = TranslationPackage.model_validate_json(output.content)
+            if package.language.casefold() != "en":
+                raise PublicationNotAllowedError("The approved translation is not in English")
+            title = package.title
+
         return PublicationPayload(
             output_id=output.id,
             article_id=article.id,
-            title=article.title,
+            language=normalized,
+            title=title,
+            telegram_text=package.channel_variants.telegram,
             source_url=article.canonical_url,
-            package=EditorialPackage.model_validate_json(output.content),
         )
 
     async def reserve_publication(
@@ -96,9 +127,10 @@ class PublicationService:
         channel_id: str,
         actor_telegram_id: int,
         expected_output_id: uuid.UUID,
+        language: str = "ru",
     ) -> PublicationAttempt:
         async with self._session_factory() as session, session.begin():
-            payload = await self._load_publishable(session, article_id, lock=True)
+            payload = await self._load_publishable(session, article_id, language, lock=True)
             if payload.output_id != expected_output_id:
                 raise PublicationNotAllowedError(
                     "The approved draft changed after preview; review it again before publishing"
@@ -116,6 +148,8 @@ class PublicationService:
 
             publication = Publication(
                 article_id=article_id,
+                ai_output_id=payload.output_id,
+                language=payload.language,
                 channel_id=channel_id,
                 status="SENDING",
             )
@@ -129,6 +163,7 @@ class PublicationService:
                     details={
                         "publication_id": str(publication.id),
                         "output_id": str(payload.output_id),
+                        "language": payload.language,
                         "channel_id": channel_id,
                     },
                 )
@@ -137,9 +172,10 @@ class PublicationService:
                 **{
                     "output_id": payload.output_id,
                     "article_id": payload.article_id,
+                    "language": payload.language,
                     "title": payload.title,
+                    "telegram_text": payload.telegram_text,
                     "source_url": payload.source_url,
-                    "package": payload.package,
                     "publication_id": publication.id,
                     "channel_id": channel_id,
                 }
@@ -179,6 +215,8 @@ class PublicationService:
                     action="PUBLISHED",
                     details={
                         "publication_id": str(publication.id),
+                        "output_id": str(publication.ai_output_id),
+                        "language": publication.language,
                         "channel_id": publication.channel_id,
                         "message_id": message_id,
                     },
@@ -209,6 +247,7 @@ class PublicationService:
                     details={
                         "publication_id": str(publication.id),
                         "channel_id": publication.channel_id,
+                        "language": publication.language,
                         "error_type": error_type,
                         "next_step": "Check the destination channel manually; do not retry automatically.",
                     },

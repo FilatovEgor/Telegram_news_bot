@@ -17,6 +17,7 @@ from app.scheduler.jobs import build_scheduler
 from app.services.editorial import EditorialService
 from app.services.ingestion import IngestionService
 from app.services.publishing import PublicationService
+from app.services.translation import TranslationService
 from app.sources.registry import build_sources
 
 logger = logging.getLogger(__name__)
@@ -70,9 +71,11 @@ async def run_application(settings: Settings) -> None:
             agent = build_editorial_agent(settings, ai_provider)
             dispatcher["editorial_agent"] = agent
             dispatcher["editorial_service"] = EditorialService(agent, session_factory, settings)
+            dispatcher["translation_service"] = TranslationService(agent, session_factory, settings)
         else:
             dispatcher["editorial_agent"] = None
             dispatcher["editorial_service"] = None
+            dispatcher["translation_service"] = None
 
         await ingestion_service.ingest(limit=settings.source_fetch_limit)
         scheduler = build_scheduler(

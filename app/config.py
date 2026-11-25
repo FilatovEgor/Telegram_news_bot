@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     bot_token: SecretStr | None = None
     moderation_chat_id: str | None = None
     publish_channel_id: str | None = None
+    publish_channel_id_en: str | None = None
     admin_ids: str = ""
     drop_pending_updates: bool = False
     database_url: SecretStr
@@ -127,6 +128,14 @@ class Settings(BaseSettings):
                 except ValueError as exc:
                     raise ValueError(f"Invalid Telegram admin ID: {value!r}") from exc
         return result
+
+    def publish_channel_for(self, language: str = "ru") -> str | None:
+        normalized = language.strip().casefold()
+        if normalized == "ru":
+            return self.publish_channel_id
+        if normalized == "en":
+            return self.publish_channel_id_en
+        raise ValueError("Only ru and en publishing channels are configured")
 
     @property
     def rss_feed_urls(self) -> list[str]:

@@ -316,6 +316,7 @@ class EditorialService:
             saved_output.content = execution.package.model_dump_json()
             saved_output.status = "NEEDS_REVIEW"
             saved_output.prompt_version = execution.prompt_version
+            saved_output.language = execution.package.language.casefold()
             saved_output.validation_json = validation
             saved_output.tool_trace = execution.tool_trace
             saved_output.attempt_count = execution.attempt_count

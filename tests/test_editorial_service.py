@@ -94,6 +94,7 @@ async def test_editorial_service_persists_draft_validation_and_execution_metadat
             assert saved_article.status == ArticleStatus.SUMMARIZED.value
             assert output is not None
             assert output.status == "NEEDS_REVIEW"
+            assert output.language == "en"
             assert output.prompt_version == "editorial-package-v1"
             assert output.tool_trace[0]["tool"] == "check_word_count"
             assert output.input_tokens == 40

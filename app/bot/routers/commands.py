@@ -16,7 +16,7 @@ async def start_command(message: Message) -> None:
     await message.answer(
         "<b>Telegram News Bot 2.0</b>\n"
         "Multi-source news ingestion and AI-assisted editorial workflow.\n\n"
-        "Commands: /help, /load, /sources, /drafts, /draft, /review, /history, /publish"
+        "Commands: /help, /load, /sources, /drafts, /draft, /translate, /review, /history, /publish"
     )
 
 
@@ -30,13 +30,14 @@ async def help_command(message: Message) -> None:
         "/sources — show source health (administrators only)\n"
         "/drafts — list new articles awaiting AI drafts (administrators only)\n"
         "/draft ARTICLE_UUID — prepare a structured AI draft (administrators only)\n"
-        "/review [ARTICLE_UUID] — list drafts or open a moderation preview\n"
-        "/edit ARTICLE_UUID TEXT — replace the Telegram variant with plain text\n"
+        "/review [ARTICLE_UUID] [ru|en] — list drafts or open a language-specific preview\n"
+        "/edit ARTICLE_UUID [en] TEXT — edit the source-language or English Telegram variant\n"
         "/regenerate ARTICLE_UUID — create a new AI draft and supersede the previous one\n"
-        "/approve ARTICLE_UUID — approve the latest draft after blocking checks pass\n"
-        "/reject ARTICLE_UUID [REASON] — reject a draft and record the reason\n"
+        "/approve ARTICLE_UUID [ru|en] — approve the selected language after blocking checks pass\n"
+        "/reject ARTICLE_UUID [ru|en] [REASON] — reject a language version and record the reason\n"
         "/history ARTICLE_UUID — show the append-only editorial action history\n"
-        "/publish ARTICLE_UUID — send an approved draft to PUBLISH_CHANNEL_ID"
+        "/translate ARTICLE_UUID en — translate an approved Russian draft for the English channel\n"
+        "/publish ARTICLE_UUID [ru|en] — publish an approved version to its language channel"
     )
 
 

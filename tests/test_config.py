@@ -47,3 +47,16 @@ def test_ai_tool_rounds_are_bounded():
             database_url="postgresql+asyncpg://user:pass@localhost/news",
             ai_max_tool_rounds=9,
         )
+
+
+
+def test_publish_channels_are_selected_by_language():
+    settings = Settings(
+        database_url="postgresql+asyncpg://user:pass@localhost/news",
+        publish_channel_id="@news_ru",
+        publish_channel_id_en="@news_en",
+    )
+    assert settings.publish_channel_for("ru") == "@news_ru"
+    assert settings.publish_channel_for("en") == "@news_en"
+    with pytest.raises(ValueError, match="Only ru and en"):
+        settings.publish_channel_for("de")
