@@ -1,7 +1,6 @@
 """Compatibility entry point; the application now lives in :mod:`app`."""
 
 import asyncio
-
 from app.main import main
 
 
