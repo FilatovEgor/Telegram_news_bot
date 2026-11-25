@@ -1,17 +1,16 @@
 import asyncio
 import hashlib
-import logging
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urljoin
 
 import feedparser
 import httpx
 from bs4 import BeautifulSoup
 
-from app.sources.base import SourceArticle
-
-logger = logging.getLogger(__name__)
+from app.sources.base import SourceArticle, SourceFetchResult
+from app.sources.http import RateLimiter, get_with_retry
+from app.sources.urls import canonicalize_url
 
 
 def _entry_date(entry: object) -> datetime | None:
@@ -32,34 +31,71 @@ def _entry_content(entry: object) -> str:
 
 
 class RSSSource:
-    def __init__(self, client: httpx.AsyncClient, feed_url: str) -> None:
+    kind = "rss"
+
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        feed_url: str,
+        *,
+        rate_limiter: RateLimiter | None = None,
+        retry_attempts: int = 3,
+        retry_base_delay_seconds: float = 0.25,
+        retry_max_delay_seconds: float = 4.0,
+    ) -> None:
         self._client = client
         self.feed_url = feed_url
-        host = urlsplit(feed_url).netloc.lower() or "feed"
+        parsed_url = urlsplit(feed_url)
+        host = parsed_url.netloc.lower() or "feed"
         digest = hashlib.sha256(feed_url.encode("utf-8")).hexdigest()[:12]
         self.key = f"rss-{digest}"
         self.name = f"RSS: {host}"
+        self.base_url = f"{parsed_url.scheme}://{parsed_url.netloc}" if parsed_url.scheme and parsed_url.netloc else ""
+        self._rate_limiter = rate_limiter
+        self._retry_attempts = retry_attempts
+        self._retry_base_delay_seconds = retry_base_delay_seconds
+        self._retry_max_delay_seconds = retry_max_delay_seconds
 
-    async def fetch_latest(self, limit: int = 50) -> list[SourceArticle]:
-        response = await self._client.get(self.feed_url)
-        response.raise_for_status()
+    async def fetch_latest(self, limit: int = 50) -> SourceFetchResult:
+        response = await get_with_retry(
+            self._client,
+            self.feed_url,
+            attempts=self._retry_attempts,
+            base_delay_seconds=self._retry_base_delay_seconds,
+            max_delay_seconds=self._retry_max_delay_seconds,
+            rate_limiter=self._rate_limiter,
+        )
         parsed = await asyncio.to_thread(feedparser.parse, response.content)
+        entries = parsed.entries[:limit]
         articles: list[SourceArticle] = []
-        for entry in parsed.entries[:limit]:
-            url = str(getattr(entry, "link", "")).strip()
+        warnings: list[str] = []
+        failed_count = 0
+        for entry in entries:
+            raw_url = str(getattr(entry, "link", "")).strip()
             title = str(getattr(entry, "title", "")).strip()
-            if not url or not title:
+            canonical_url = canonicalize_url(urljoin(self.feed_url, raw_url)) if raw_url else None
+            if not canonical_url or not title:
+                failed_count += 1
                 continue
-            external_id = str(getattr(entry, "id", "") or url)
-            articles.append(SourceArticle(
-                source_key=self.key,
-                external_id=external_id,
-                url=url,
-                title=title,
-                content=_entry_content(entry),
-                published_at=_entry_date(entry),
-                metadata={"feed_url": self.feed_url},
-            ))
+            external_id = str(getattr(entry, "id", "") or canonical_url).strip()
+            articles.append(
+                SourceArticle(
+                    source_key=self.key,
+                    external_id=external_id,
+                    url=canonical_url,
+                    title=title,
+                    content=_entry_content(entry),
+                    published_at=_entry_date(entry),
+                    metadata={"feed_host": urlsplit(self.feed_url).netloc.lower()},
+                )
+            )
         if getattr(parsed, "bozo", False):
-            logger.warning("RSS feed returned a parsing warning: %s", self.feed_url)
-        return articles
+            warnings.append("Feed parser reported malformed feed data")
+        if failed_count:
+            warnings.append(f"{failed_count} RSS entr(y/ies) had no valid title or HTTP(S) link")
+        return SourceFetchResult(
+            articles=articles,
+            attempted_count=len(entries),
+            failed_count=failed_count,
+            warnings=warnings,
+        )

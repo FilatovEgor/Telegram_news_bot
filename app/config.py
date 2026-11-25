@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     source_fetch_limit: int = 50
     http_timeout_seconds: float = 20.0
     http_max_connections: int = 20
+    mrc_article_concurrency: int = 5
+    source_retry_attempts: int = 3
+    source_retry_base_delay_seconds: float = 0.25
+    source_retry_max_delay_seconds: float = 4.0
+    source_request_interval_seconds: float = 0.2
+    duplicate_lookback_days: int = 30
+    duplicate_title_similarity_threshold: float = 0.92
+    duplicate_candidate_limit: int = 300
     log_level: str = "INFO"
     timezone: str = "UTC"
     ingestion_interval_minutes: int = 60
@@ -39,11 +47,38 @@ class Settings(BaseSettings):
             raise ValueError("OPENAI_TEMPERATURE must be between 0 and 2")
         return value
 
-    @field_validator("source_fetch_limit", "http_max_connections", "ingestion_interval_minutes")
+    @field_validator(
+        "source_fetch_limit",
+        "http_max_connections",
+        "mrc_article_concurrency",
+        "source_retry_attempts",
+        "duplicate_lookback_days",
+        "duplicate_candidate_limit",
+        "ingestion_interval_minutes",
+    )
     @classmethod
     def validate_positive_ints(cls, value: int) -> int:
         if value < 1:
             raise ValueError("This setting must be a positive integer")
+        return value
+
+    @field_validator(
+        "http_timeout_seconds",
+        "source_retry_base_delay_seconds",
+        "source_retry_max_delay_seconds",
+        "source_request_interval_seconds",
+    )
+    @classmethod
+    def validate_non_negative_numbers(cls, value: float) -> float:
+        if value < 0:
+            raise ValueError("This setting must not be negative")
+        return value
+
+    @field_validator("duplicate_title_similarity_threshold")
+    @classmethod
+    def validate_similarity_threshold(cls, value: float) -> float:
+        if not 0 < value <= 1:
+            raise ValueError("DUPLICATE_TITLE_SIMILARITY_THRESHOLD must be in (0, 1]")
         return value
 
     @property

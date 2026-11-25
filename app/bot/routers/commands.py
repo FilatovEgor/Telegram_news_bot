@@ -13,12 +13,22 @@ router = Router(name="commands")
 
 @router.message(Command("start"))
 async def start_command(message: Message) -> None:
-    await message.answer("<b>Telegram News Bot 2.0</b>\\nMulti-source news ingestion and AI-assisted editorial workflow.\\n\\nCommands: /help, /load")
+    await message.answer(
+        "<b>Telegram News Bot 2.0</b>\n"
+        "Multi-source news ingestion and AI-assisted editorial workflow.\n\n"
+        "Commands: /help, /load, /sources"
+    )
 
 
 @router.message(Command("help"))
 async def help_command(message: Message) -> None:
-    await message.answer("<b>Available commands</b>\\n/start — show bot information\\n/help — show this help\\n/load — fetch new articles from configured sources (administrators only)")
+    await message.answer(
+        "<b>Available commands</b>\n"
+        "/start — show bot information\n"
+        "/help — show this help\n"
+        "/load — fetch new articles from configured sources (administrators only)\n"
+        "/sources — show source health (administrators only)"
+    )
 
 
 @router.message(Command("load"))
@@ -33,4 +43,11 @@ async def load_command(message: Message, settings: Settings, ingestion_service: 
         logger.exception("Manual ingestion failed")
         await message.answer("News ingestion failed. The error has been logged for investigation.")
         return
-    await message.answer(f"Ingestion finished.\\nSources checked: <b>{result.sources_checked}</b>\\nArticles discovered: <b>{result.discovered}</b>\\nNew articles saved: <b>{result.created}</b>")
+    await message.answer(
+        "Ingestion finished.\n"
+        f"Sources checked: <b>{result.sources_checked}</b>\n"
+        f"Articles discovered: <b>{result.discovered}</b>\n"
+        f"New articles saved: <b>{result.created}</b>\n"
+        f"Duplicate candidates for review: <b>{result.duplicates}</b>\n"
+        f"Source failures: <b>{result.failures}</b>"
+    )

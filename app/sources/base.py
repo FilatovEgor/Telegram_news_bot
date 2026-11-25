@@ -15,8 +15,22 @@ class SourceArticle:
     metadata: dict[str, object] = field(default_factory=dict)
 
 
+@dataclass(slots=True)
+class SourceFetchResult:
+    articles: list[SourceArticle] = field(default_factory=list)
+    attempted_count: int = 0
+    failed_count: int = 0
+    warnings: list[str] = field(default_factory=list)
+
+    @property
+    def fetched_count(self) -> int:
+        return len(self.articles)
+
+
 class NewsSource(Protocol):
     key: str
     name: str
+    kind: str
+    base_url: str
 
-    async def fetch_latest(self, limit: int = 50) -> list[SourceArticle]: ...
+    async def fetch_latest(self, limit: int = 50) -> SourceFetchResult: ...

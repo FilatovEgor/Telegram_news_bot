@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.ai.agent import EditorialAgent
 from app.ai.openai_provider import OpenAIProvider
-from app.bot.routers import commands_router
+from app.bot.routers import commands_router, sources_router
 from app.config import Settings, get_settings
 from app.logging_config import configure_logging
 from app.scheduler.jobs import build_scheduler
@@ -31,6 +31,7 @@ async def run_application(settings: Settings) -> None:
     bot = Bot(token=settings.bot_token.get_secret_value(), default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dispatcher = Dispatcher()
     dispatcher.include_router(commands_router)
+    dispatcher.include_router(sources_router)
     dispatcher["settings"] = settings
     try:
         async with engine.connect() as connection:
@@ -44,7 +45,7 @@ async def run_application(settings: Settings) -> None:
         sources = build_sources(settings, http_client)
         if not sources:
             raise ValueError("No news sources configured; enable MRC or configure RSS_FEEDS")
-        ingestion_service = IngestionService(sources, session_factory)
+        ingestion_service = IngestionService(sources, session_factory, settings=settings)
         dispatcher["ingestion_service"] = ingestion_service
         dispatcher["editorial_agent"] = EditorialAgent(ai_provider) if ai_provider is not None else None
         await ingestion_service.ingest(limit=settings.source_fetch_limit)

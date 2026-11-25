@@ -6,6 +6,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -36,8 +37,16 @@ class NewsSource(Base):
     kind: Mapped[str] = mapped_column(String(32))
     base_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    last_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_fetched_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     articles: Mapped[list["Article"]] = relationship(back_populates="source")
+    runs: Mapped[list["SourceRun"]] = relationship(back_populates="source", cascade="all, delete-orphan")
 
 
 class Article(Base):
@@ -62,6 +71,39 @@ class Article(Base):
     ai_outputs: Mapped[list["AIOutput"]] = relationship(back_populates="article", cascade="all, delete-orphan")
     editorial_actions: Mapped[list["EditorialAction"]] = relationship(back_populates="article", cascade="all, delete-orphan")
     publications: Mapped[list["Publication"]] = relationship(back_populates="article", cascade="all, delete-orphan")
+
+
+class SourceRun(Base):
+    __tablename__ = "source_runs"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("news_sources.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(16))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    duration_ms: Mapped[int] = mapped_column(Integer)
+    attempted_count: Mapped[int] = mapped_column(Integer, default=0)
+    fetched_count: Mapped[int] = mapped_column(Integer, default=0)
+    failed_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_count: Mapped[int] = mapped_column(Integer, default=0)
+    duplicate_count: Mapped[int] = mapped_column(Integer, default=0)
+    error_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    warnings: Mapped[list[str]] = mapped_column(JSON, default=list)
+    source: Mapped[NewsSource] = relationship(back_populates="runs")
+
+
+class ArticleDuplicate(Base):
+    __tablename__ = "article_duplicates"
+    __table_args__ = (
+        UniqueConstraint("article_id_left", "article_id_right", name="uq_article_duplicate_pair"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    article_id_left: Mapped[uuid.UUID] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
+    article_id_right: Mapped[uuid.UUID] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
+    match_type: Mapped[str] = mapped_column(String(32))
+    similarity: Mapped[float] = mapped_column(Float)
+    review_status: Mapped[str] = mapped_column(String(16), default="PENDING", index=True)
+    details: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class AIOutput(Base):
