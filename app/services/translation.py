@@ -67,6 +67,7 @@ class TranslationService:
             )
             .order_by(AIOutput.created_at.desc(), AIOutput.id.desc())
             .limit(1)
+            .correlate(Article)
             .scalar_subquery()
         )
         async with self._session_factory() as session:
