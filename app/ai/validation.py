@@ -1,6 +1,5 @@
 import re
 import unicodedata
-import urllib.parse
 
 
 _NUMBER_PATTERN = re.compile(
@@ -55,11 +54,9 @@ def validate_editorial_package(
         entity for entity in package.entities
         if not _entity_in_source(entity, normalized_source)
     )
-    try:
-        parsed_url = urllib.parse.urlsplit(source_url)
-        valid_url = parsed_url.scheme in {"http", "https"} and bool(parsed_url.netloc)
-    except ValueError:
-        valid_url = False
+    valid_url = bool(
+        re.match(r"^https?://[^\s/?#]+(?:[/?#]|$)", source_url.strip(), flags=re.IGNORECASE)
+    )
 
     summary_word_count = len(package.summary.split())
     checks = [
