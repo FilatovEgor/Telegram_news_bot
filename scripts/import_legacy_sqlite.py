@@ -17,7 +17,7 @@ def read_legacy_rows(path: Path) -> list[tuple]:
     connection = sqlite3.connect(f"file:{path.resolve()}?mode=ro", uri=True)
     try:
         return connection.execute(
-            "SELECT news_id, title, link, status, date FROM motor ORDER BY id"
+            "SELECT id, news_id, title, link, status, date FROM motor ORDER BY id"
         ).fetchall()
     finally:
         connection.close()
@@ -42,7 +42,7 @@ async def import_rows(rows: list[tuple]) -> tuple[int, int]:
                 )
                 session.add(source)
                 await session.flush()
-            for news_id, title, link, old_status, old_date in rows:
+            for legacy_id, news_id, title, link, old_status, old_date in rows:
                 if not news_id or not title or not link:
                     skipped += 1
                     continue
