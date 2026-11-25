@@ -8,12 +8,12 @@ from aiogram.filters import Command
 from aiogram.filters.command import CommandObject
 from aiogram.types import (
     CallbackQuery,
-    InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
 )
 
 from app.ai.tools import format_telegram_draft
+from app.bot.routers.workflow import editorial_review_keyboard, translation_review_keyboard
 from app.config import Settings
 from app.services.editorial import (
     ArticleNotFoundError,
@@ -47,19 +47,7 @@ def _is_admin_callback(callback: CallbackQuery, settings: Settings) -> bool:
 
 
 def _review_keyboard(article_id: uuid.UUID) -> InlineKeyboardMarkup:
-    article_key = str(article_id)
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="Edit text", callback_data=f"ed:edit:{article_key}"),
-                InlineKeyboardButton(text="Approve", callback_data=f"ed:approve:{article_key}"),
-            ],
-            [
-                InlineKeyboardButton(text="Reject", callback_data=f"ed:reject:{article_key}"),
-                InlineKeyboardButton(text="Regenerate", callback_data=f"ed:regen:{article_key}"),
-            ],
-        ]
-    )
+    return editorial_review_keyboard(article_id)
 
 
 async def _send_review(
@@ -110,25 +98,14 @@ async def _send_review(
         await message.answer("<b>AI caveats</b>\n" + caveats)
     if include_actions:
         await message.answer(
-            "Choose a moderation action. Publishing is a separate, explicit /publish command.",
+            "🛡️ Human decision required. Publishing controls unlock only after approval.",
             reply_markup=_review_keyboard(item.article_id),
         )
 
 
 
 def _translation_review_keyboard(article_id: uuid.UUID) -> InlineKeyboardMarkup:
-    article_key = str(article_id)
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="Edit English", callback_data=f"tr:edit:{article_key}"),
-                InlineKeyboardButton(text="Approve English", callback_data=f"tr:approve:{article_key}"),
-            ],
-            [
-                InlineKeyboardButton(text="Reject English", callback_data=f"tr:reject:{article_key}"),
-            ],
-        ]
-    )
+    return translation_review_keyboard(article_id)
 
 
 async def _send_translation_review(

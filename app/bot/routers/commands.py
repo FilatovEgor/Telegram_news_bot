@@ -4,6 +4,7 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from app.bot.routers.workflow import dashboard_keyboard
 from app.config import Settings
 from app.services.ingestion import IngestionService
 
@@ -12,33 +13,34 @@ router = Router(name="commands")
 
 
 @router.message(Command("start"))
-async def start_command(message: Message) -> None:
+async def start_command(message: Message, settings: Settings) -> None:
+    if message.from_user is None or message.from_user.id not in settings.admin_id_set:
+        await message.answer(
+            "Telegram News Bot 2.0 — multi-source news intelligence. "
+            "Administrator access is required for editorial controls."
+        )
+        return
     await message.answer(
-        "<b>Telegram News Bot 2.0</b>\n"
-        "Multi-source news ingestion and AI-assisted editorial workflow.\n\n"
-        "Commands: /help, /load, /sources, /drafts, /draft, /translate, /review, /history, /publish"
+        "🛰️ <b>NEWS OPS // CONTROL DECK</b>\n"
+        "Select a stage. Operate the editorial pipeline with inline controls.\n\n"
+        "🧠 AI drafts · 🧪 human review · 🛡️ approval · 🚀 explicit publishing",
+        reply_markup=dashboard_keyboard(),
     )
 
 
 @router.message(Command("help"))
-async def help_command(message: Message) -> None:
-    await message.answer(
-        "<b>Available commands</b>\n"
-        "/start — show bot information\n"
-        "/help — show this help\n"
-        "/load — fetch new articles from configured sources (administrators only)\n"
-        "/sources — show source health (administrators only)\n"
-        "/drafts — list new articles awaiting AI drafts (administrators only)\n"
-        "/draft ARTICLE_UUID — prepare a structured AI draft (administrators only)\n"
-        "/review [ARTICLE_UUID] [ru|en] — list drafts or open a language-specific preview\n"
-        "/edit ARTICLE_UUID [en] TEXT — edit the source-language or English Telegram variant\n"
-        "/regenerate ARTICLE_UUID — create a new AI draft and supersede the previous one\n"
-        "/approve ARTICLE_UUID [ru|en] — approve the selected language after blocking checks pass\n"
-        "/reject ARTICLE_UUID [ru|en] [REASON] — reject a language version and record the reason\n"
-        "/history ARTICLE_UUID — show the append-only editorial action history\n"
-        "/translate ARTICLE_UUID en — translate an approved Russian draft for the English channel\n"
-        "/publish ARTICLE_UUID [ru|en] — publish an approved version to its language channel"
-    )
+async def help_command(message: Message, settings: Settings) -> None:
+    if message.from_user is not None and message.from_user.id in settings.admin_id_set:
+        await message.answer(
+            "🛠️ <b>Control deck guide</b>\n"
+            "Use inline buttons to browse incoming stories, generate drafts, edit copy, approve or reject "
+            "versions, translate approved Russian stories, and preview/confirm each channel publication.\n\n"
+            "Commands remain available as fallback: /load, /sources, /drafts, /draft, /review, /edit, "
+            "/regenerate, /approve, /reject, /translate, /publish and /history.",
+            reply_markup=dashboard_keyboard(),
+        )
+    else:
+        await message.answer("Telegram News Bot 2.0 — multi-source news intelligence.")
 
 
 @router.message(Command("load"))
