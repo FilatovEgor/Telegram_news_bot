@@ -21,13 +21,18 @@ dependencies = [
   "pydantic>=2.7,<3",
   "pydantic-settings>=2.2,<3",
   "python-dotenv>=1.0,<2",
-  "sqlalchemy[asyncio]>=2.0,<3",
+  "sqlalchemy>=2.0,<3",
   "tenacity>=8.2,<10",
 ]
 
 [project.optional-dependencies]
 gigachat = ["gigachat>=0.1.20"]
-dev = ["mypy>=1.10,<2", "pytest>=8,<10", "pytest-asyncio>=0.23,<2", "ruff>=0.5,<1"]
+dev = [
+  "mypy>=1.10,<2",
+  "pytest>=8,<10",
+  "pytest-asyncio>=0.23,<2",
+  "ruff>=0.5,<1",
+]
 
 [tool.setuptools.packages.find]
 include = ["app*"]
@@ -35,6 +40,7 @@ include = ["app*"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 100
