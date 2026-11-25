@@ -5,12 +5,13 @@ import httpx
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.fsm.storage.memory import MemoryStorage
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.ai.agent import EditorialAgent
 from app.ai.openai_provider import OpenAIProvider
-from app.bot.routers import commands_router, editorial_router, sources_router
+from app.bot.routers import commands_router, editorial_router, sources_router, workflow_router
 from app.config import Settings, get_settings
 from app.logging_config import configure_logging
 from app.scheduler.jobs import build_scheduler
@@ -47,10 +48,11 @@ async def run_application(settings: Settings) -> None:
     scheduler = None
     assert settings.bot_token is not None
     bot = Bot(token=settings.bot_token.get_secret_value(), default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    dispatcher = Dispatcher()
+    dispatcher = Dispatcher(storage=MemoryStorage())
     dispatcher.include_router(commands_router)
     dispatcher.include_router(sources_router)
     dispatcher.include_router(editorial_router)
+    dispatcher.include_router(workflow_router)
     dispatcher["settings"] = settings
     dispatcher["publication_service"] = PublicationService(session_factory)
     try:

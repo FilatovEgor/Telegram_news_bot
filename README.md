@@ -37,6 +37,18 @@ The pipeline stores provider/model, prompt version, validation results, model to
 
 These automated checks are **source-consistency checks, not independent fact-checking**. They cannot establish whether the article itself is true. AI output is always saved as NEEDS_REVIEW; generation never approves or publishes.
 
+## Button-driven Telegram control deck
+
+Use /start to open the 🛰️ **NEWS OPS control deck**. The inline workflow is:
+
+1. **Incoming articles → Generate AI draft** — select a discovered story and start editorial generation.
+2. **RU review → Open review** — inspect the Telegram/brief variants and validation notes; edit copy from the **Edit copy** button by sending replacement text, or approve, reject, or regenerate with inline controls.
+3. **After RU approval** — choose **Preview RU channel** to inspect the exact final post, then **Confirm RU publish** to send it. Or choose **Translate to English** to create an independently reviewable translation.
+4. **EN review → Open review** — edit, approve, reject, or re-translate independently. After EN approval, preview and explicitly confirm publication to the English channel.
+5. **Audit log** — inspect the append-only action history directly from each review/approval card.
+
+Geek-style icons identify the stages (🛰️ control deck, 🧠 AI generation, 🧪 review, ✅ approval, 🌐 translation, 📡 source telemetry, 🚀 publishing). A publish action is only offered after the matching language version is approved. The confirmation callback is bound to the exact approved output shown in the preview; the existing SENDING/UNKNOWN reservation continues to prevent automatic duplicate sends. Slash commands remain available as fallback, but normal operation does not require article UUIDs or editorial slash commands.
+
 ## Human moderation
 
 - /review lists source-language drafts awaiting moderation; /review en lists English translations; /review ARTICLE_UUID [ru|en] opens the selected language preview and moderation actions.
