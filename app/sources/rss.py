@@ -2,7 +2,7 @@ import asyncio
 import hashlib
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
-from urllib.parse import urlsplit, urljoin
+from urllib.parse import urljoin, urlsplit
 
 import feedparser
 import httpx

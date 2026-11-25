@@ -10,7 +10,8 @@ from app.config import Settings
 from app.database.models import Article, NewsSource, SourceRun
 from app.repositories.articles import get_or_create_source, save_discovered_article
 from app.repositories.duplicates import record_duplicate_candidates
-from app.sources.base import NewsSource as NewsSourceAdapter, SourceFetchResult
+from app.sources.base import NewsSource as NewsSourceAdapter
+from app.sources.base import SourceFetchResult
 
 logger = logging.getLogger(__name__)
 
