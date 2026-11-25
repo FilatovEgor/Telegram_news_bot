@@ -1,4 +1,3 @@
-# ruff: noqa: I001
 import difflib
 import hashlib
 import re
@@ -6,19 +5,17 @@ import unicodedata
 import urllib.parse
 
 
-_TRACKING_KEYS = {
-    "fbclid",
-    "gclid",
-    "yclid",
-    "mc_cid",
-    "mc_eid",
-    "_ga",
-    "_gl",
-}
-
-
 def canonicalize_url(value: str) -> str | None:
     """Normalize a web URL while retaining meaningful query parameters."""
+    tracking_keys = {
+        "fbclid",
+        "gclid",
+        "yclid",
+        "mc_cid",
+        "mc_eid",
+        "_ga",
+        "_gl",
+    }
     try:
         parsed = urllib.parse.urlsplit(value.strip())
         hostname = parsed.hostname
@@ -39,7 +36,7 @@ def canonicalize_url(value: str) -> str | None:
     query_items = []
     for key, item_value in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True):
         lowered = key.lower()
-        if lowered.startswith("utm_") or lowered in _TRACKING_KEYS:
+        if lowered.startswith("utm_") or lowered in tracking_keys:
             continue
         query_items.append((key, item_value))
     query_items.sort(key=lambda pair: (pair[0].casefold(), pair[1]))
