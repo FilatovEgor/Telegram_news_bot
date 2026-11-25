@@ -2,8 +2,8 @@
 import argparse
 import asyncio
 import sqlite3
-from collections import Counter
 import uuid
+from collections import Counter
 from pathlib import Path
 
 from sqlalchemy import select
