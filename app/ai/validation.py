@@ -2,8 +2,6 @@ import re
 import unicodedata
 import urllib.parse
 
-from app.ai.schemas import EditorialPackage
-
 
 _NUMBER_PATTERN = re.compile(
     r"(?<![\w])(?:[$€£₽]\s*)?[+-]?\d+(?:[.,]\d+)*(?:\s?[%％])?(?![\w])",
@@ -32,7 +30,7 @@ def _entity_in_source(entity: str, normalized_source: str) -> bool:
 
 
 def validate_editorial_package(
-    package: EditorialPackage,
+    package,
     *,
     source_title: str,
     source_content: str,
