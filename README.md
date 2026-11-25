@@ -25,7 +25,8 @@ The bot applies Alembic migrations before it starts. `/load` triggers ingestion 
 The supplied ZIP contains a SQLite `motor` table with 646 rows and columns `id`, `news_id`, `title`, `link`, `status`, `date`. The SQLite file is deliberately not committed. Back it up outside Git and run the one-time importer after PostgreSQL is ready:
 
 ```bash
-python scripts/import_legacy_sqlite.py /path/to/storage.db
+python -m scripts.import_legacy_sqlite /path/to/storage.db --dry-run
+python -m scripts.import_legacy_sqlite /path/to/storage.db
 ```
 
 Legacy `Send` maps to `SUMMARIZED` because the old application assigned it when the AI review draft was sent to the moderation chat, not when the channel post was published. `Del` maps to `REJECTED`. The original status and date are preserved in `legacy_status` and `legacy_date`.
