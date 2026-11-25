@@ -1,7 +1,7 @@
 import asyncio
 import hashlib
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit
 
@@ -20,7 +20,7 @@ def _entry_date(entry: object) -> datetime | None:
         return None
     try:
         parsed = parsedate_to_datetime(str(value))
-        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
     except (TypeError, ValueError, OverflowError):
         return None
 
