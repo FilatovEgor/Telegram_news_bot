@@ -32,3 +32,18 @@ def test_retry_and_concurrency_settings_must_be_positive():
             database_url="postgresql+asyncpg://user:pass@localhost/news",
             source_retry_attempts=0,
         )
+
+
+def test_ai_run_limits_have_safe_defaults():
+    settings = Settings(database_url="postgresql+asyncpg://user:pass@localhost/news")
+    assert settings.ai_max_tool_rounds == 3
+    assert settings.ai_retry_attempts == 2
+    assert settings.ai_max_completion_tokens_per_article == 1800
+
+
+def test_ai_tool_rounds_are_bounded():
+    with pytest.raises(ValidationError):
+        Settings(
+            database_url="postgresql+asyncpg://user:pass@localhost/news",
+            ai_max_tool_rounds=9,
+        )

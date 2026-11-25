@@ -21,6 +21,15 @@ class Settings(BaseSettings):
     openai_temperature: float = 0.2
     gigachat_credentials: SecretStr | None = None
     gigachat_model: str = "GigaChat"
+    ai_request_timeout_seconds: float = 45.0
+    ai_run_timeout_seconds: float = 90.0
+    ai_retry_attempts: int = 2
+    ai_retry_base_delay_seconds: float = 0.5
+    ai_max_tool_rounds: int = 3
+    ai_max_input_chars: int = 24000
+    ai_max_completion_tokens_per_request: int = 1000
+    ai_max_completion_tokens_per_article: int = 1800
+    ai_summary_max_words: int = 200
 
     mrc_enabled: bool = True
     mrc_listing_url: str = "https://www.mrc.ru/ajax/news/?query=&condition=OR"
@@ -55,6 +64,10 @@ class Settings(BaseSettings):
         "duplicate_lookback_days",
         "duplicate_candidate_limit",
         "ingestion_interval_minutes",
+        "ai_max_input_chars",
+        "ai_max_completion_tokens_per_request",
+        "ai_max_completion_tokens_per_article",
+        "ai_summary_max_words",
     )
     @classmethod
     def validate_positive_ints(cls, value: int) -> int:
@@ -62,16 +75,38 @@ class Settings(BaseSettings):
             raise ValueError("This setting must be a positive integer")
         return value
 
+    @field_validator("ai_retry_attempts")
+    @classmethod
+    def validate_ai_retry_attempts(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("AI_RETRY_ATTEMPTS must not be negative")
+        return value
+
+    @field_validator("ai_max_tool_rounds")
+    @classmethod
+    def validate_ai_tool_rounds(cls, value: int) -> int:
+        if not 0 <= value <= 8:
+            raise ValueError("AI_MAX_TOOL_ROUNDS must be between 0 and 8")
+        return value
+
     @field_validator(
         "http_timeout_seconds",
         "source_retry_base_delay_seconds",
         "source_retry_max_delay_seconds",
         "source_request_interval_seconds",
+        "ai_retry_base_delay_seconds",
     )
     @classmethod
     def validate_non_negative_numbers(cls, value: float) -> float:
         if value < 0:
             raise ValueError("This setting must not be negative")
+        return value
+
+    @field_validator("ai_request_timeout_seconds", "ai_run_timeout_seconds")
+    @classmethod
+    def validate_positive_timeouts(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("AI timeouts must be greater than zero")
         return value
 
     @field_validator("duplicate_title_similarity_threshold")
@@ -109,7 +144,7 @@ class Settings(BaseSettings):
         if self.ai_provider == "gigachat":
             if self.gigachat_credentials is None:
                 raise ValueError("GIGACHAT_CREDENTIALS is required when AI_PROVIDER=gigachat")
-            raise NotImplementedError("GigaChat provider adapter is an optional follow-up; use AI_PROVIDER=openai in Phase 1")
+            raise NotImplementedError("GigaChat provider adapter is an optional follow-up; use AI_PROVIDER=openai")
         _ = self.admin_id_set
 
 

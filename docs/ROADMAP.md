@@ -27,12 +27,14 @@
 - Detect cross-source duplicate candidates by canonical URL, content hash or title similarity. Candidates remain pending human review; source articles are preserved and never auto-merged or discarded.
 - Add PostgreSQL migration and CI migration verification plus parser/retry/canonicalization tests.
 
-## Phase 3 — editorial agent
-- Article classification, summaries, number/entity checks and channel variants.
-- Persist provider/model, prompt version, tool traces and validation results.
-- Add budget/time limits and bounded retries.
-- Human approval remains mandatory; agent is not allowed to publish directly.
-- Add GigaChat as a selectable provider implementation if required.
+## Phase 3 — editorial AI pipeline (implemented)
+- Generate structured editorial packages with topic classification, concise summary, key points, extracted entities and important numeric facts.
+- Generate primary Telegram and compact/brief channel variants.
+- Check summary length, numeric consistency, entity grounding, variant completeness and source URL validity.
+- Persist provider/model, prompt version, validation results, tool-call traces, attempts, duration and token usage.
+- Enforce per-request and per-article completion-token budgets, input-size limits, request/run timeouts and bounded retries/tool rounds.
+- Add administrator-only /drafts and /draft commands to generate and inspect draft previews.
+- Drafts are persisted as NEEDS_REVIEW. The agent has no approval or publishing capability; automated checks are source-consistency checks, not external fact-checking.
 
 ## Phase 4 — moderation and publishing
 - Preview, regenerate, edit, approve and reject actions.

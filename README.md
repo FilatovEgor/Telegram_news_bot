@@ -18,7 +18,7 @@ A multi-source, AI-assisted editorial and Telegram publishing platform. The uplo
 4. Run docker compose up --build -d.
 5. Follow logs with docker compose logs -f bot.
 
-The container applies Alembic migrations before starting the bot. PostgreSQL data is persisted in the postgres_data volume. The bot performs an initial ingestion and repeats ingestion on the configured interval. /load triggers manual ingestion and is restricted to configured administrators. /sources shows source health for administrators.
+The container applies Alembic migrations before starting the bot. PostgreSQL data is persisted in the postgres_data volume. The bot performs an initial ingestion and repeats ingestion on the configured interval. /load triggers manual ingestion, /sources shows source health, and /drafts plus /draft run the editorial workflow. Administrative commands are restricted to configured ADMIN_IDS.
 
 ## Ingestion quality
 
@@ -28,11 +28,19 @@ Each source has a latest health state and an append-only run history. /sources s
 
 Stored URLs are canonicalized by removing known tracking parameters, fragments, default ports and the www prefix. Content hashes ignore case and whitespace differences. Cross-source duplicate candidates are recorded for editorial review using canonical URL, content hash and title similarity. **The bot does not automatically merge, suppress or delete duplicate articles.**
 
-The main settings for Phase 2 are SOURCE_RETRY_ATTEMPTS, SOURCE_RETRY_BASE_DELAY_SECONDS, SOURCE_RETRY_MAX_DELAY_SECONDS, SOURCE_REQUEST_INTERVAL_SECONDS, MRC_ARTICLE_CONCURRENCY, DUPLICATE_LOOKBACK_DAYS, DUPLICATE_TITLE_SIMILARITY_THRESHOLD and DUPLICATE_CANDIDATE_LIMIT.
+## Editorial AI workflow
+
+Use /drafts to see newly discovered articles waiting for an AI draft, then run /draft ARTICLE_UUID. The AI generates a structured editorial package containing a topic classification, concise summary, key points, named entities, important numeric facts, and two text variants: Telegram and brief.
+
+The pipeline stores provider/model, prompt version, validation results, model tool-call trace, attempt count, duration and token usage. It checks the summary word limit, whether output numeric values occur in the source, whether extracted entities occur in the source, whether both variants exist, and whether the source link is valid.
+
+These automated checks are **source-consistency checks, not independent fact-checking**. They cannot establish whether the article itself is true. The generated output is saved with status NEEDS_REVIEW. No /draft action approves or publishes a message; a human editor remains responsible for review.
+
+AI resource controls are configurable through AI_REQUEST_TIMEOUT_SECONDS, AI_RUN_TIMEOUT_SECONDS, AI_RETRY_ATTEMPTS, AI_RETRY_BASE_DELAY_SECONDS, AI_MAX_TOOL_ROUNDS, AI_MAX_INPUT_CHARS, AI_MAX_COMPLETION_TOKENS_PER_REQUEST, AI_MAX_COMPLETION_TOKENS_PER_ARTICLE and AI_SUMMARY_MAX_WORDS.
 
 ## AI providers
 
-AI_PROVIDER=openai is the default and OPENAI_MODEL=gpt-4 preserves the requested GPT-4 integration. The agent may call only local validation and formatting tools; there is no AI tool that publishes to Telegram. Human approval remains mandatory. GigaChat credentials are not required for the default deployment; GigaChat remains a separately installable provider extension.
+AI_PROVIDER=openai is the default and OPENAI_MODEL=gpt-4 preserves the requested GPT-4 integration. GigaChat credentials are not required for the default deployment; GigaChat remains a separately installable provider extension.
 
 ## Legacy SQLite archive
 
@@ -51,7 +59,7 @@ The importer reads the source database in read-only mode, preserves the original
     alembic upgrade head
     python -m compileall -q app migrations scripts
 
-CI runs Ruff, pytest, compileall and the Alembic upgrade against a disposable PostgreSQL service.
+CI runs Ruff, pytest, compileall and the Alembic upgrade against a disposable PostgreSQL service. The editorial service integration test runs against that PostgreSQL database when DATABASE_URL is set.
 
 ## Security
 

@@ -16,7 +16,7 @@ async def start_command(message: Message) -> None:
     await message.answer(
         "<b>Telegram News Bot 2.0</b>\n"
         "Multi-source news ingestion and AI-assisted editorial workflow.\n\n"
-        "Commands: /help, /load, /sources"
+        "Commands: /help, /load, /sources, /drafts, /draft"
     )
 
 
@@ -27,7 +27,9 @@ async def help_command(message: Message) -> None:
         "/start — show bot information\n"
         "/help — show this help\n"
         "/load — fetch new articles from configured sources (administrators only)\n"
-        "/sources — show source health (administrators only)"
+        "/sources — show source health (administrators only)\n"
+        "/drafts — list new articles awaiting AI drafts (administrators only)\n"
+        "/draft ARTICLE_UUID — prepare a structured AI draft (administrators only)"
     )
 
 

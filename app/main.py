@@ -10,14 +10,30 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.ai.agent import EditorialAgent
 from app.ai.openai_provider import OpenAIProvider
-from app.bot.routers import commands_router, sources_router
+from app.bot.routers import commands_router, editorial_router, sources_router
 from app.config import Settings, get_settings
 from app.logging_config import configure_logging
 from app.scheduler.jobs import build_scheduler
+from app.services.editorial import EditorialService
 from app.services.ingestion import IngestionService
 from app.sources.registry import build_sources
 
 logger = logging.getLogger(__name__)
+
+
+def build_editorial_agent(settings: Settings, provider: OpenAIProvider) -> EditorialAgent:
+    return EditorialAgent(
+        provider,
+        max_tool_rounds=settings.ai_max_tool_rounds,
+        retry_attempts=settings.ai_retry_attempts,
+        retry_base_delay_seconds=settings.ai_retry_base_delay_seconds,
+        request_timeout_seconds=settings.ai_request_timeout_seconds,
+        run_timeout_seconds=settings.ai_run_timeout_seconds,
+        max_input_chars=settings.ai_max_input_chars,
+        max_completion_tokens_per_request=settings.ai_max_completion_tokens_per_request,
+        max_completion_tokens_per_article=settings.ai_max_completion_tokens_per_article,
+        max_summary_words=settings.ai_summary_max_words,
+    )
 
 
 async def run_application(settings: Settings) -> None:
@@ -32,6 +48,7 @@ async def run_application(settings: Settings) -> None:
     dispatcher = Dispatcher()
     dispatcher.include_router(commands_router)
     dispatcher.include_router(sources_router)
+    dispatcher.include_router(editorial_router)
     dispatcher["settings"] = settings
     try:
         async with engine.connect() as connection:
@@ -47,9 +64,21 @@ async def run_application(settings: Settings) -> None:
             raise ValueError("No news sources configured; enable MRC or configure RSS_FEEDS")
         ingestion_service = IngestionService(sources, session_factory, settings=settings)
         dispatcher["ingestion_service"] = ingestion_service
-        dispatcher["editorial_agent"] = EditorialAgent(ai_provider) if ai_provider is not None else None
+        if ai_provider is not None:
+            agent = build_editorial_agent(settings, ai_provider)
+            dispatcher["editorial_agent"] = agent
+            dispatcher["editorial_service"] = EditorialService(agent, session_factory, settings)
+        else:
+            dispatcher["editorial_agent"] = None
+            dispatcher["editorial_service"] = None
+
         await ingestion_service.ingest(limit=settings.source_fetch_limit)
-        scheduler = build_scheduler(ingestion_service, timezone=settings.timezone, interval_minutes=settings.ingestion_interval_minutes, source_limit=settings.source_fetch_limit)
+        scheduler = build_scheduler(
+            ingestion_service,
+            timezone=settings.timezone,
+            interval_minutes=settings.ingestion_interval_minutes,
+            source_limit=settings.source_fetch_limit,
+        )
         scheduler.start()
         await bot.delete_webhook(drop_pending_updates=settings.drop_pending_updates)
         logger.info("Starting Telegram News Bot 2.0 with %d source(s)", len(sources))
