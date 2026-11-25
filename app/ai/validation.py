@@ -1,5 +1,4 @@
 import re
-import unicodedata
 
 
 _NUMBER_PATTERN = re.compile(
@@ -17,8 +16,7 @@ def _extract_numbers(value: str) -> set[str]:
 
 
 def _normalize_words(value: str) -> str:
-    normalized = unicodedata.normalize("NFKC", value).casefold()
-    return " ".join(re.sub(r"[^\w]+", " ", normalized, flags=re.UNICODE).split())
+    return " ".join(re.sub(r"[^\w]+", " ", value.casefold(), flags=re.UNICODE).split())
 
 
 def _entity_in_source(entity: str, normalized_source: str) -> bool:
