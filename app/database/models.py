@@ -1,13 +1,13 @@
 import uuid
-from enum import StrEnum
 from datetime import datetime
+from enum import StrEnum
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     DateTime,
     ForeignKey,
     Integer,
-    JSON,
     String,
     Text,
     UniqueConstraint,
