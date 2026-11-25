@@ -5,7 +5,6 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from app.bot.routers.workflow import dashboard_keyboard
-
 from app.config import Settings
 from app.services.ingestion import IngestionService
 
