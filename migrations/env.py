@@ -5,8 +5,8 @@ from alembic import context
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.config import get_settings
-from app.database.base import Base
 from app.database import models  # noqa: F401 - register ORM metadata
+from app.database.base import Base
 
 config = context.config
 if config.config_file_name is not None:
