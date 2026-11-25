@@ -7,7 +7,7 @@ name = "telegram-news-bot"
 version = "2.0.0"
 description = "Multi-source, AI-assisted Telegram news editorial and publishing platform"
 readme = "README.md"
-requires-python = ">=3.11,<3.16"
+requires-python = ">=3.11,<3.14"
 authors = [{ name = "Telegram News Bot maintainers" }]
 dependencies = [
   "aiogram==3.34.0",
