@@ -1,38 +1,50 @@
 # Telegram News Bot 2.0 — Phase 1 implementation plan
 
-## Decisions
-- Multiple news sources: MRC plus configurable RSS feeds first; source adapters keep future sites independent.
-- AI: OpenAI GPT-4 is the primary provider. A bounded editorial agent may call only local, allowlisted tools. GigaChat remains an optional provider extension.
-- Persistence: PostgreSQL from the beginning, SQLAlchemy 2.x async, Alembic migrations.
-- Telegram: aiogram 3.x Bot API. Telethon is deferred unless Telegram-channel ingestion from a user account becomes a requirement.
-- Runtime/deployment: modern Python, HTTPX, Pydantic Settings, Docker Compose and CI.
+## Confirmed decisions
+
+- **Sources:** multi-source from the start: MRC plus configurable RSS feeds, with a source-adapter interface for future providers.
+- **AI:** OpenAI GPT-4 is the primary provider. A bounded tool-calling editorial agent may call only local allowlisted tools. GigaChat is reserved as an optional provider extension and is not required by the default deployment.
+- **Database:** PostgreSQL from the beginning, with SQLAlchemy 2.x async and Alembic.
+- **Telegram:** aiogram 3.x Bot API. Telethon is deferred until channel ingestion through a user account is required.
+- **Deployment:** Docker Compose with persistent PostgreSQL storage and environment-based secrets.
 
 ## Phase 1 deliverables
-1. Separate application startup, Telegram routers, services, sources, AI providers, persistence and scheduling.
-2. Move all tokens and connection strings to environment-based settings; keep secrets and database files out of Git.
-3. Preserve the uploaded MRC AJAX listing URL, article URL format, selectors, Russian normalization and tag transliteration in a dedicated parser.
-4. Add an RSS adapter and source registry for multiple feeds.
-5. Use a shared asynchronous HTTP client with TLS verification, timeouts and bounded concurrency.
-6. Create PostgreSQL tables for sources, articles, AI outputs, editorial actions, publications and administrators.
-7. Add an Alembic initial migration and a one-time SQLite archive importer. The importer must retain original article IDs, links, titles and legacy status/date.
-8. Use GPT-4 with bounded tool calling for editorial draft preparation. AI tools must not publish or modify channels; human approval remains mandatory.
-9. Add aiogram command handling, admin-only manual ingestion, scheduled ingestion, Docker Compose and CI tests.
+
+1. Establish application layers for startup, Telegram, AI, sources, business services, persistence and scheduling.
+2. Move secrets into environment configuration; do not commit `.env`, database files, tokens or credentials.
+3. Preserve the uploaded MRC source semantics: AJAX listing URL, `/news/{slug}` paths, article title/body selectors, tag extraction, Russian transliteration and text normalization. Replace disabled TLS verification and repeated per-field downloads with one verified async fetch per article.
+4. Add a configurable RSS adapter and multi-source registry.
+5. Add PostgreSQL models and an Alembic initial migration for sources, articles, AI outputs, editorial actions, publications and admins.
+6. Add an idempotent, read-only-source importer for the legacy SQLite `motor` table, retaining `id`, `news_id`, `title`, `link`, `status` and `date`.
+7. Add the GPT-4 provider and a bounded agent with local validation/formatting tools. No agent tool may publish to Telegram; human approval remains mandatory.
+8. Add admin-only `/load`, startup and scheduled source ingestion, Docker Compose and CI checks.
+
+## Verified legacy database
+
+The latest supplied `storage(1).db` has a valid SQLite integrity check and 646 rows in `motor`:
+
+| Legacy status | Rows | New status |
+|---|---:|---|
+| empty / NULL | 470 | `DISCOVERED` |
+| `Send` | 166 | `SUMMARIZED` |
+| `Del` | 10 | `REJECTED` |
+
+`Send` means the old bot sent an article to the moderation chat for review; it does **not** mean it was published. The importer retains the original row ID and old status/date fields. The DB file itself stays outside Git.
 
 ## Acceptance criteria
-- Lint, unit tests and Python compilation pass in CI.
-- App can connect to PostgreSQL and start polling.
-- Manual and scheduled ingestion use the same source registry.
+
+- Ruff, pytest and compile checks pass in CI.
+- The app connects to PostgreSQL and starts aiogram polling with valid configuration.
+- Manual and scheduled ingestion share one source registry.
 - Re-discovered articles are idempotent by source + external ID.
-- MRC parser handles malformed or incomplete pages without disabling TLS verification.
-- No bot token, AI key, private database, bytecode or local runtime state is committed.
-- Legacy status mapping is documented and does not mislabel AI review as channel publication.
+- MRC fetches use normal TLS verification, timeouts and bounded concurrency.
+- The SQLite importer reads source data in read-only mode and is safe to rerun.
+- No `.env`, production secrets, SQLite DB, bytecode or runtime data is committed.
 
-## Phases after foundation
-- Phase 2: source health, retries, rate limits, canonical URL normalization and cross-source duplicate detection.
-- Phase 3: agent workflow for classification, summarization, factual consistency checks and channel-specific drafts, with persisted prompts/tool traces/cost controls.
-- Phase 4: approve, reject, edit, regenerate and idempotent publication with Telegram message IDs and audit history.
-- Phase 5: multi-channel routing, topic/language profiles, translations and optional Telethon ingestion connector.
-- Phase 6: operational metrics, alerts, backups, restore tests, security/dependency checks and production runbooks.
+## Next phases
 
-## Database migration note
-The project ZIP currently available in the conversation contains a legacy SQLite `motor` table with 646 records. A later database file set has not appeared as an attachment in the current conversation yet. The importer and migrations must be reconciled against those updated database files before treating migration as final. Never commit the SQLite file itself.
+- **Phase 2:** source health, retries, per-source rate limits, URL canonicalization and cross-source duplicate detection.
+- **Phase 3:** agentic classification, summarization, factual consistency checks, prompt/version tracking, cost controls and tool-call audit.
+- **Phase 4:** editorial preview/edit/regenerate/approve/reject, audit trail and idempotent Telegram publishing.
+- **Phase 5:** multiple channels, topic/language routing and optional Telethon source connector.
+- **Phase 6:** observability, backups, restore tests, deployment runbooks and security checks.
