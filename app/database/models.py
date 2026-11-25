@@ -1,15 +1,25 @@
-import enum
 import uuid
+from enum import StrEnum
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    JSON,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import Uuid
 
 from app.database.base import Base
 
 
-class ArticleStatus(str, enum.Enum):
+class ArticleStatus(StrEnum):
     DISCOVERED = "DISCOVERED"
     SUMMARIZED = "SUMMARIZED"
     APPROVED = "APPROVED"
