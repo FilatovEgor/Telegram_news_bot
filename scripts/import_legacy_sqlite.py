@@ -1,4 +1,8 @@
-"""Import the legacy SQLite motor table into PostgreSQL without modifying the source file."""
+"""Inspect and import the legacy SQLite ``motor`` table into PostgreSQL.
+
+The input SQLite file is opened read-only and is never copied into this repository.
+"""
+
 import argparse
 import asyncio
 import sqlite3
@@ -30,7 +34,13 @@ def inspect_legacy_rows(rows: list[tuple]) -> dict[str, int]:
 
 
 def map_legacy_status(value: str | None) -> str:
-    return {"Send": "SUMMARIZED", "Del": "REJECTED", "Can't del - more 48H": "REJECTED"}.get(value or "", "DISCOVERED")
+    # In the legacy handlers, Send meant that a draft was sent to the moderation chat.
+    # Del and the failed-delete status both reflect an editor's request to reject the item.
+    return {
+        "Send": "SUMMARIZED",
+        "Del": "REJECTED",
+        "Can't del - more 48H": "REJECTED",
+    }.get(value or "", "DISCOVERED")
 
 
 async def import_rows(rows: list[tuple]) -> tuple[int, int]:
@@ -52,12 +62,13 @@ async def import_rows(rows: list[tuple]) -> tuple[int, int]:
                 )
                 session.add(source)
                 await session.flush()
+
             for legacy_id, news_id, title, link, old_status, old_date in rows:
                 if not news_id or not title or not link:
                     skipped += 1
                     continue
+
                 legacy_status = str(old_status) if old_status is not None else None
-                status = map_legacy_status(legacy_status)
                 statement = (
                     insert(Article)
                     .values(
@@ -68,7 +79,7 @@ async def import_rows(rows: list[tuple]) -> tuple[int, int]:
                         title=str(title),
                         content="",
                         content_hash=None,
-                        status=status,
+                        status=map_legacy_status(legacy_status),
                         legacy_row_id=int(legacy_id) if legacy_id is not None else None,
                         legacy_status=legacy_status,
                         legacy_date=str(old_date) if old_date is not None else None,
@@ -88,13 +99,30 @@ async def import_rows(rows: list[tuple]) -> tuple[int, int]:
 
 
 async def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("sqlite_path", type=Path, help="Path to a protected copy of storage.db")
+    parser = argparse.ArgumentParser(description="Import the old MRC SQLite archive into PostgreSQL")
+    parser.add_argument("sqlite_path", type=Path, help="Path to a protected backup of storage.db")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate the SQLite schema and report records/statuses without connecting to PostgreSQL",
+    )
     args = parser.parse_args()
     if not args.sqlite_path.is_file():
         raise SystemExit(f"SQLite database not found: {args.sqlite_path}")
-    rows = read_legacy_rows(args.sqlite_path)
-    print(f"Found {len(rows)} legacy row(s)")
+
+    try:
+        rows = read_legacy_rows(args.sqlite_path)
+    except sqlite3.Error as exc:
+        raise SystemExit(f"Could not read legacy motor table: {exc}") from exc
+
+    print(f"Legacy articles found: {len(rows)}")
+    for status, count in inspect_legacy_rows(rows).items():
+        print(f"  {status}: {count}")
+
+    if args.dry_run:
+        print("Dry run only; PostgreSQL was not modified.")
+        return
+
     imported, skipped = await import_rows(rows)
     print(f"Imported: {imported}; skipped/already present/invalid: {skipped}")
 
