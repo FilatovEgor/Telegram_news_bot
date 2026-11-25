@@ -2,6 +2,7 @@
 import argparse
 import asyncio
 import sqlite3
+from collections import Counter
 import uuid
 from pathlib import Path
 
@@ -21,6 +22,15 @@ def read_legacy_rows(path: Path) -> list[tuple]:
         ).fetchall()
     finally:
         connection.close()
+
+
+def inspect_legacy_rows(rows: list[tuple]) -> dict[str, int]:
+    statuses = Counter((str(row[4]) if row[4] is not None else "<empty>") for row in rows)
+    return dict(sorted(statuses.items()))
+
+
+def map_legacy_status(value: str | None) -> str:
+    return {"Send": "SUMMARIZED", "Del": "REJECTED", "Can't del - more 48H": "REJECTED"}.get(value or "", "DISCOVERED")
 
 
 async def import_rows(rows: list[tuple]) -> tuple[int, int]:
