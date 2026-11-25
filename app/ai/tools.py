@@ -1,6 +1,7 @@
 import html
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 from urllib.parse import urlsplit
 
 ToolHandler = Callable[..., Any | Awaitable[Any]]
