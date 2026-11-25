@@ -8,8 +8,13 @@ from bs4 import BeautifulSoup
 from app.sources.base import SourceArticle
 
 MRC_BASE_URL = "https://www.mrc.ru"
+
 _TRANSLITERATION = {
-    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "yo", "ж": "zh", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m", "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u", "ф": "f", "х": "h", "ц": "c", "ч": "ch", "ш": "sh", "щ": "sch", "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "yo",
+    "ж": "zh", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m",
+    "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u",
+    "ф": "f", "х": "h", "ц": "c", "ч": "ch", "ш": "sh", "щ": "sch",
+    "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
 }
 _TRANSLITERATION.update({key.upper(): value.capitalize() for key, value in list(_TRANSLITERATION.items())})
 
@@ -19,10 +24,14 @@ def transliterate(value: str) -> str:
 
 
 def normalize_article_text(value: str) -> str:
-    text = re.sub(r"\\s+", " ", value).strip()
-    for old, new in {" .": ".", " ,": ",", "годах": "гг", "год.": "г.", "год ": "г ", "год)": "г)", "тонн": "тн"}.items():
+    text = re.sub(r"\s+", " ", value).strip()
+    replacements = {
+        " .": ".", " ,": ",", "годах": "гг", "год.": "г.",
+        "год ": "г ", "год)": "г)", "тонн": "тн",
+    }
+    for old, new in replacements.items():
         text = text.replace(old, new)
-    return re.sub(r"\\s+", " ", text).strip()
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def canonical_article_url(href: str, base_url: str = MRC_BASE_URL) -> str | None:
@@ -62,7 +71,8 @@ def parse_tags(soup: BeautifulSoup) -> list[str]:
             continue
         if "mrc" in raw.lower():
             break
-        tag = f"#{transliterate(raw.lower().replace(' ', '_').replace('-', '_'))}"
+        slug = transliterate(raw.lower().replace(" ", "_").replace("-", "_"))
+        tag = f"#{slug}"
         if tag not in tags:
             tags.append(tag)
     if "#mrc" not in tags:
@@ -73,19 +83,31 @@ def parse_tags(soup: BeautifulSoup) -> list[str]:
 def parse_article_html(html: str, url: str) -> SourceArticle:
     soup = BeautifulSoup(html, "html.parser")
     title_element = soup.find("h1", class_="h2 news-single-page-header")
+    content_element = soup.find("div", class_="post-content")
+
     title = title_element.get_text(" ", strip=True) if title_element else ""
     if not title:
         title_tag = soup.find("meta", attrs={"property": "og:title"})
         title = str(title_tag.get("content", "")).strip() if title_tag else ""
-    content_element = soup.find("div", class_="post-content")
+
     if content_element:
         for unwanted in content_element.find_all(["script", "style", "noscript"]):
             unwanted.decompose()
         content = normalize_article_text(content_element.get_text(" ", strip=True))
     else:
         content = ""
+
     if not title:
         raise ValueError(f"MRC article has no title: {url}")
     if not content:
         raise ValueError(f"MRC article has no article body: {url}")
-    return SourceArticle(source_key="mrc", external_id=article_external_id(url), url=url, title=title, content=content, tags=parse_tags(soup), metadata={"parser": "mrc-html-v1"})
+
+    return SourceArticle(
+        source_key="mrc",
+        external_id=article_external_id(url),
+        url=url,
+        title=title,
+        content=content,
+        tags=parse_tags(soup),
+        metadata={"parser": "mrc-html-v1"},
+    )
