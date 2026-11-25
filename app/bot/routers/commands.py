@@ -16,7 +16,7 @@ async def start_command(message: Message) -> None:
     await message.answer(
         "<b>Telegram News Bot 2.0</b>\n"
         "Multi-source news ingestion and AI-assisted editorial workflow.\n\n"
-        "Commands: /help, /load, /sources, /drafts, /draft"
+        "Commands: /help, /load, /sources, /drafts, /draft, /review, /history, /publish"
     )
 
 
@@ -29,7 +29,14 @@ async def help_command(message: Message) -> None:
         "/load — fetch new articles from configured sources (administrators only)\n"
         "/sources — show source health (administrators only)\n"
         "/drafts — list new articles awaiting AI drafts (administrators only)\n"
-        "/draft ARTICLE_UUID — prepare a structured AI draft (administrators only)"
+        "/draft ARTICLE_UUID — prepare a structured AI draft (administrators only)\n"
+        "/review [ARTICLE_UUID] — list drafts or open a moderation preview\n"
+        "/edit ARTICLE_UUID TEXT — replace the Telegram variant with plain text\n"
+        "/regenerate ARTICLE_UUID — create a new AI draft and supersede the previous one\n"
+        "/approve ARTICLE_UUID — approve the latest draft after blocking checks pass\n"
+        "/reject ARTICLE_UUID [REASON] — reject a draft and record the reason\n"
+        "/history ARTICLE_UUID — show the append-only editorial action history\n"
+        "/publish ARTICLE_UUID — send an approved draft to PUBLISH_CHANNEL_ID"
     )
 
 

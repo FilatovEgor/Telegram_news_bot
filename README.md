@@ -15,10 +15,11 @@ A multi-source, AI-assisted editorial and Telegram publishing platform. The uplo
 1. Copy .env.example to .env.
 2. Set BOT_TOKEN, OPENAI_API_KEY, ADMIN_IDS and a strong POSTGRES_PASSWORD.
 3. Configure RSS_FEEDS as comma-separated feed URLs. MRC is enabled by default.
-4. Run docker compose up --build -d.
-5. Follow logs with docker compose logs -f bot.
+4. Set PUBLISH_CHANNEL_ID to the destination channel (for example, @channel_name) when publishing is enabled. Add the bot to that channel with permission to post.
+5. Run docker compose up --build -d.
+6. Follow logs with docker compose logs -f bot.
 
-The container applies Alembic migrations before starting the bot. PostgreSQL data is persisted in the postgres_data volume. The bot performs an initial ingestion and repeats ingestion on the configured interval. /load triggers manual ingestion, /sources shows source health, and /drafts plus /draft run the editorial workflow. Administrative commands are restricted to configured ADMIN_IDS.
+The container applies Alembic migrations before starting the bot. PostgreSQL data is persisted in the postgres_data volume. The bot performs an initial ingestion and repeats ingestion on the configured interval. /load triggers manual ingestion and /sources shows source health. Editorial and publishing commands are restricted to configured ADMIN_IDS.
 
 ## Ingestion quality
 
@@ -30,17 +31,36 @@ Stored URLs are canonicalized by removing known tracking parameters, fragments, 
 
 ## Editorial AI workflow
 
-Use /drafts to see newly discovered articles waiting for an AI draft, then run /draft ARTICLE_UUID. The AI generates a structured editorial package containing a topic classification, concise summary, key points, named entities, important numeric facts, and two text variants: Telegram and brief.
+Use /drafts to see newly discovered articles waiting for an AI draft, then run /draft ARTICLE_UUID. The AI generates a structured editorial package containing a topic classification, concise summary, key points, named entities, important numeric facts, and Telegram and brief variants.
 
 The pipeline stores provider/model, prompt version, validation results, model tool-call trace, attempt count, duration and token usage. It checks the summary word limit, whether output numeric values occur in the source, whether extracted entities occur in the source, whether both variants exist, and whether the source link is valid.
 
-These automated checks are **source-consistency checks, not independent fact-checking**. They cannot establish whether the article itself is true. The generated output is saved with status NEEDS_REVIEW. No /draft action approves or publishes a message; a human editor remains responsible for review.
+These automated checks are **source-consistency checks, not independent fact-checking**. They cannot establish whether the article itself is true. AI output is always saved as NEEDS_REVIEW; generation never approves or publishes.
 
-AI resource controls are configurable through AI_REQUEST_TIMEOUT_SECONDS, AI_RUN_TIMEOUT_SECONDS, AI_RETRY_ATTEMPTS, AI_RETRY_BASE_DELAY_SECONDS, AI_MAX_TOOL_ROUNDS, AI_MAX_INPUT_CHARS, AI_MAX_COMPLETION_TOKENS_PER_REQUEST, AI_MAX_COMPLETION_TOKENS_PER_ARTICLE and AI_SUMMARY_MAX_WORDS.
+## Human moderation
+
+- /review lists drafts awaiting moderation; /review ARTICLE_UUID opens the complete preview and inline moderation actions.
+- Editors can edit the Telegram variant with /edit ARTICLE_UUID replacement text. Input is treated as plain text and safely HTML-escaped for Telegram.
+- /regenerate ARTICLE_UUID produces a replacement draft. The former review draft is marked SUPERSEDED only after the replacement succeeds.
+- /approve ARTICLE_UUID approves the latest draft only when all error-level validation checks pass. Non-blocking validation warnings remain visible.
+- /reject ARTICLE_UUID [REASON] rejects the draft and records the reason.
+- /history ARTICLE_UUID displays the append-only audit trail, including actor Telegram IDs, timestamps and action details.
+
+All moderation actions are restricted to configured ADMIN_IDS. A moderation decision is never made by the AI.
+
+## Explicit publishing and duplicate-send protection
+
+Set PUBLISH_CHANNEL_ID and grant the bot permission to post. An administrator must run /publish ARTICLE_UUID explicitly after reviewing and approving the draft. The publishing service checks the article status, the latest approved editorial package and blocking validation results before reserving a send.
+
+The database enforces one publication reservation per article and destination channel. A reservation is persisted as SENDING before calling Telegram. A successful response changes the article and publication to PUBLISHED and records the Telegram message ID. If the Telegram request fails or its outcome is ambiguous, the reservation becomes UNKNOWN (or remains SENDING if the process exits before it can update the database). These states are intentionally not retried automatically: check the channel manually before any operational intervention. This conservative behavior avoids duplicate posts when Telegram accepted a message but the client lost the response.
+
+A message send and a database commit cannot be made one atomic transaction across Telegram and PostgreSQL. The SENDING/UNKNOWN guard therefore favors at-most-once behavior over automatic recovery. Every publish request and outcome is included in /history.
 
 ## AI providers
 
 AI_PROVIDER=openai is the default and OPENAI_MODEL=gpt-4 preserves the requested GPT-4 integration. GigaChat credentials are not required for the default deployment; GigaChat remains a separately installable provider extension.
+
+AI resource controls are configurable through AI_REQUEST_TIMEOUT_SECONDS, AI_RUN_TIMEOUT_SECONDS, AI_RETRY_ATTEMPTS, AI_RETRY_BASE_DELAY_SECONDS, AI_MAX_TOOL_ROUNDS, AI_MAX_INPUT_CHARS, AI_MAX_COMPLETION_TOKENS_PER_REQUEST, AI_MAX_COMPLETION_TOKENS_PER_ARTICLE and AI_SUMMARY_MAX_WORDS.
 
 ## Legacy SQLite archive
 
@@ -59,7 +79,7 @@ The importer reads the source database in read-only mode, preserves the original
     alembic upgrade head
     python -m compileall -q app migrations scripts
 
-CI runs Ruff, pytest, compileall and the Alembic upgrade against a disposable PostgreSQL service. The editorial service integration test runs against that PostgreSQL database when DATABASE_URL is set.
+CI runs Ruff, pytest, compileall and the Alembic upgrade against a disposable PostgreSQL service. Editorial and moderation/publishing integration tests run against that PostgreSQL database when DATABASE_URL is set.
 
 ## Security
 

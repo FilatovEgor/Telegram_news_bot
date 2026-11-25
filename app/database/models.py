@@ -140,12 +140,15 @@ class EditorialAction(Base):
 
 class Publication(Base):
     __tablename__ = "publications"
-    __table_args__ = (UniqueConstraint("channel_id", "message_id", name="uq_publication_channel_message"),)
+    __table_args__ = (
+        UniqueConstraint("channel_id", "message_id", name="uq_publication_channel_message"),
+        UniqueConstraint("article_id", "channel_id", name="uq_publication_article_channel"),
+    )
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     article_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
     channel_id: Mapped[str] = mapped_column(String(255))
     message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    status: Mapped[str] = mapped_column(String(32), default="PENDING")
+    status: Mapped[str] = mapped_column(String(32), default="PENDING", index=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     article: Mapped[Article] = relationship(back_populates="publications")

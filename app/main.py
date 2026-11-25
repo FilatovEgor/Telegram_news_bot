@@ -16,6 +16,7 @@ from app.logging_config import configure_logging
 from app.scheduler.jobs import build_scheduler
 from app.services.editorial import EditorialService
 from app.services.ingestion import IngestionService
+from app.services.publishing import PublicationService
 from app.sources.registry import build_sources
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,7 @@ async def run_application(settings: Settings) -> None:
     dispatcher.include_router(sources_router)
     dispatcher.include_router(editorial_router)
     dispatcher["settings"] = settings
+    dispatcher["publication_service"] = PublicationService(session_factory)
     try:
         async with engine.connect() as connection:
             await connection.execute(text("SELECT 1"))

@@ -11,7 +11,13 @@ from app.ai.agent import EditorialAgent, EditorialExecution
 from app.ai.schemas import EditorialPackage
 from app.ai.validation import validate_editorial_package
 from app.config import Settings
-from app.database.models import AIOutput, Article, ArticleStatus, NewsSource
+from app.database.models import (
+    AIOutput,
+    Article,
+    ArticleStatus,
+    EditorialAction,
+    NewsSource,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +31,10 @@ class EditorialAlreadyRunningError(RuntimeError):
 
 
 class EditorialGenerationError(RuntimeError):
+    pass
+
+
+class EditorialValidationError(ValueError):
     pass
 
 
@@ -49,8 +59,41 @@ class EditorialDraft:
     status: str
 
 
+@dataclass(slots=True, frozen=True)
+class EditorialReviewItem:
+    output_id: uuid.UUID
+    article_id: uuid.UUID
+    title: str
+    source_name: str
+    source_url: str
+    package: EditorialPackage
+    validation: dict[str, Any]
+    status: str
+
+
+@dataclass(slots=True, frozen=True)
+class EditorialHistoryEntry:
+    action: str
+    actor_telegram_id: int | None
+    created_at: datetime | None
+    details: dict[str, Any]
+
+
+def blocking_validation_checks(validation: dict[str, Any]) -> list[dict[str, Any]]:
+    checks = validation.get("checks")
+    if not isinstance(checks, list):
+        return [{"name": "validation_record", "details": "Validation checks are missing"}]
+    return [
+        check
+        for check in checks
+        if isinstance(check, dict)
+        and not check.get("passed", False)
+        and check.get("severity", "error") != "warning"
+    ]
+
+
 class EditorialService:
-    """Runs and persists an AI draft. It has no publication or approval operations."""
+    """Generates drafts and records human moderation decisions; never publishes."""
 
     def __init__(
         self,
@@ -82,7 +125,86 @@ class EditorialService:
                 for row in rows
             ]
 
-    async def draft_article(self, article_id: uuid.UUID) -> EditorialDraft:
+    async def review_queue(self, limit: int = 10) -> list[EditorialReviewItem]:
+        safe_limit = max(1, min(limit, 20))
+        latest_output_id = (
+            select(AIOutput.id)
+            .where(
+                AIOutput.article_id == Article.id,
+                AIOutput.output_type == "editorial_package",
+            )
+            .order_by(AIOutput.created_at.desc(), AIOutput.id.desc())
+            .limit(1)
+            .scalar_subquery()
+        )
+        async with self._session_factory() as session:
+            rows = await session.execute(
+                select(Article, NewsSource, AIOutput)
+                .join(NewsSource, NewsSource.id == Article.source_id)
+                .join(AIOutput, AIOutput.id == latest_output_id)
+                .where(
+                    Article.status == ArticleStatus.SUMMARIZED.value,
+                    AIOutput.status == "NEEDS_REVIEW",
+                )
+                .order_by(AIOutput.created_at.asc())
+                .limit(safe_limit)
+            )
+            return [
+                EditorialReviewItem(
+                    output_id=output.id,
+                    article_id=article.id,
+                    title=article.title,
+                    source_name=source.name,
+                    source_url=article.canonical_url,
+                    package=EditorialPackage.model_validate_json(output.content),
+                    validation=output.validation_json or {},
+                    status=output.status,
+                )
+                for article, source, output in rows
+            ]
+
+    async def get_review_item(self, article_id: uuid.UUID) -> EditorialReviewItem:
+        async with self._session_factory() as session:
+            article_data = await session.execute(
+                select(Article, NewsSource)
+                .join(NewsSource, NewsSource.id == Article.source_id)
+                .where(Article.id == article_id)
+            )
+            row = article_data.first()
+            if row is None:
+                raise ArticleNotFoundError("Article was not found")
+            article, source = row
+            output = await session.scalar(
+                select(AIOutput)
+                .where(
+                    AIOutput.article_id == article_id,
+                    AIOutput.output_type == "editorial_package",
+                )
+                .order_by(AIOutput.created_at.desc(), AIOutput.id.desc())
+                .limit(1)
+            )
+            if (
+                article.status != ArticleStatus.SUMMARIZED.value
+                or output is None
+                or output.status != "NEEDS_REVIEW"
+            ):
+                raise ValueError("This article does not have a draft awaiting review")
+            return EditorialReviewItem(
+                output_id=output.id,
+                article_id=article.id,
+                title=article.title,
+                source_name=source.name,
+                source_url=article.canonical_url,
+                package=EditorialPackage.model_validate_json(output.content),
+                validation=output.validation_json or {},
+                status=output.status,
+            )
+
+    async def draft_article(
+        self,
+        article_id: uuid.UUID,
+        actor_telegram_id: int | None = None,
+    ) -> EditorialDraft:
         now = datetime.now(UTC)
         async with self._session_factory() as session, session.begin():
             article = await session.scalar(
@@ -178,6 +300,19 @@ class EditorialService:
             if saved_output is None or saved_article is None:
                 raise RuntimeError("Editorial records disappeared while generation was running")
 
+            previous_outputs = list(
+                await session.scalars(
+                    select(AIOutput).where(
+                        AIOutput.article_id == article_id,
+                        AIOutput.output_type == "editorial_package",
+                        AIOutput.status == "NEEDS_REVIEW",
+                    )
+                )
+            )
+            previous_ids = [str(item.id) for item in previous_outputs]
+            for previous in previous_outputs:
+                previous.status = "SUPERSEDED"
+
             saved_output.content = execution.package.model_dump_json()
             saved_output.status = "NEEDS_REVIEW"
             saved_output.prompt_version = execution.prompt_version
@@ -194,6 +329,18 @@ class EditorialService:
                 "scope_note": validation["scope_note"],
             }
             saved_article.status = ArticleStatus.SUMMARIZED.value
+            session.add(
+                EditorialAction(
+                    article_id=article_id,
+                    actor_telegram_id=actor_telegram_id,
+                    action="REGENERATED" if previous_ids else "DRAFT_CREATED",
+                    details={
+                        "output_id": str(output_id),
+                        "superseded_output_ids": previous_ids,
+                        "validation_passed": bool(validation.get("passed")),
+                    },
+                )
+            )
 
         return EditorialDraft(
             output_id=output_id,
@@ -206,3 +353,228 @@ class EditorialService:
             model=self._agent.model_name,
             status="NEEDS_REVIEW",
         )
+
+    async def edit_telegram_variant(
+        self,
+        article_id: uuid.UUID,
+        text: str,
+        actor_telegram_id: int,
+    ) -> EditorialReviewItem:
+        edited_text = text.strip()
+        if not edited_text:
+            raise ValueError("The replacement Telegram text cannot be empty")
+        if len(edited_text) > 3000:
+            raise ValueError("The replacement Telegram text must be at most 3000 characters")
+
+        async with self._session_factory() as session, session.begin():
+            article = await session.scalar(
+                select(Article).where(Article.id == article_id).with_for_update()
+            )
+            if article is None:
+                raise ArticleNotFoundError("Article was not found")
+            output = await session.scalar(
+                select(AIOutput)
+                .where(
+                    AIOutput.article_id == article_id,
+                    AIOutput.output_type == "editorial_package",
+                )
+                .order_by(AIOutput.created_at.desc(), AIOutput.id.desc())
+                .limit(1)
+                .with_for_update()
+            )
+            if (
+                article.status != ArticleStatus.SUMMARIZED.value
+                or output is None
+                or output.status != "NEEDS_REVIEW"
+            ):
+                raise ValueError("Only a draft awaiting review can be edited")
+
+            package = EditorialPackage.model_validate_json(output.content)
+            previous_text = package.channel_variants.telegram
+            updated_package = EditorialPackage.model_validate(
+                {
+                    **package.model_dump(),
+                    "channel_variants": {
+                        **package.channel_variants.model_dump(),
+                        "telegram": edited_text,
+                    },
+                }
+            )
+            validation = validate_editorial_package(
+                updated_package,
+                source_title=article.title,
+                source_content=article.content,
+                source_url=article.canonical_url,
+                max_summary_words=self._settings.ai_summary_max_words,
+            )
+            output.content = updated_package.model_dump_json()
+            output.validation_json = validation
+            output.metadata_json = {
+                **output.metadata_json,
+                "last_edited_by": str(actor_telegram_id),
+                "last_edited_at": datetime.now(UTC).isoformat(),
+            }
+            session.add(
+                EditorialAction(
+                    article_id=article_id,
+                    actor_telegram_id=actor_telegram_id,
+                    action="EDITED",
+                    details={
+                        "output_id": str(output.id),
+                        "field": "channel_variants.telegram",
+                        "before": previous_text,
+                        "after": edited_text,
+                        "validation_passed": bool(validation.get("passed")),
+                    },
+                )
+            )
+            source_name = await session.scalar(
+                select(NewsSource.name).where(NewsSource.id == article.source_id)
+            )
+            return EditorialReviewItem(
+                output_id=output.id,
+                article_id=article.id,
+                title=article.title,
+                source_name=source_name or "Unknown source",
+                source_url=article.canonical_url,
+                package=updated_package,
+                validation=validation,
+                status=output.status,
+            )
+
+    async def approve_article(
+        self,
+        article_id: uuid.UUID,
+        actor_telegram_id: int,
+    ) -> EditorialReviewItem:
+        async with self._session_factory() as session, session.begin():
+            article = await session.scalar(
+                select(Article).where(Article.id == article_id).with_for_update()
+            )
+            if article is None:
+                raise ArticleNotFoundError("Article was not found")
+            output = await session.scalar(
+                select(AIOutput)
+                .where(
+                    AIOutput.article_id == article_id,
+                    AIOutput.output_type == "editorial_package",
+                )
+                .order_by(AIOutput.created_at.desc(), AIOutput.id.desc())
+                .limit(1)
+                .with_for_update()
+            )
+            if (
+                article.status != ArticleStatus.SUMMARIZED.value
+                or output is None
+                or output.status != "NEEDS_REVIEW"
+            ):
+                raise ValueError("Only the latest draft awaiting review can be approved")
+            validation = output.validation_json or {}
+            blockers = blocking_validation_checks(validation)
+            if blockers:
+                names = ", ".join(str(item.get("name", "check")) for item in blockers[:5])
+                raise EditorialValidationError(
+                    f"Approval blocked by failed validation checks: {names}. Edit or regenerate first."
+                )
+
+            output.status = "APPROVED"
+            article.status = ArticleStatus.APPROVED.value
+            package = EditorialPackage.model_validate_json(output.content)
+            source_name = await session.scalar(
+                select(NewsSource.name).where(NewsSource.id == article.source_id)
+            )
+            session.add(
+                EditorialAction(
+                    article_id=article_id,
+                    actor_telegram_id=actor_telegram_id,
+                    action="APPROVED",
+                    details={
+                        "output_id": str(output.id),
+                        "validation_warnings": [
+                            str(check.get("name"))
+                            for check in validation.get("checks", [])
+                            if isinstance(check, dict)
+                            and not check.get("passed", False)
+                            and check.get("severity") == "warning"
+                        ],
+                    },
+                )
+            )
+            return EditorialReviewItem(
+                output_id=output.id,
+                article_id=article.id,
+                title=article.title,
+                source_name=source_name or "Unknown source",
+                source_url=article.canonical_url,
+                package=package,
+                validation=validation,
+                status=output.status,
+            )
+
+    async def reject_article(
+        self,
+        article_id: uuid.UUID,
+        actor_telegram_id: int,
+        reason: str = "Rejected by editor",
+    ) -> None:
+        clean_reason = reason.strip()[:1000] or "No reason supplied"
+        async with self._session_factory() as session, session.begin():
+            article = await session.scalar(
+                select(Article).where(Article.id == article_id).with_for_update()
+            )
+            if article is None:
+                raise ArticleNotFoundError("Article was not found")
+            output = await session.scalar(
+                select(AIOutput)
+                .where(
+                    AIOutput.article_id == article_id,
+                    AIOutput.output_type == "editorial_package",
+                )
+                .order_by(AIOutput.created_at.desc(), AIOutput.id.desc())
+                .limit(1)
+                .with_for_update()
+            )
+            if (
+                article.status != ArticleStatus.SUMMARIZED.value
+                or output is None
+                or output.status != "NEEDS_REVIEW"
+            ):
+                raise ValueError("Only the latest draft awaiting review can be rejected")
+            output.status = "REJECTED"
+            article.status = ArticleStatus.REJECTED.value
+            session.add(
+                EditorialAction(
+                    article_id=article_id,
+                    actor_telegram_id=actor_telegram_id,
+                    action="REJECTED",
+                    details={"output_id": str(output.id), "reason": clean_reason},
+                )
+            )
+
+    async def action_history(
+        self,
+        article_id: uuid.UUID,
+        limit: int = 20,
+    ) -> list[EditorialHistoryEntry]:
+        safe_limit = max(1, min(limit, 50))
+        async with self._session_factory() as session:
+            article_exists = await session.scalar(
+                select(Article.id).where(Article.id == article_id)
+            )
+            if article_exists is None:
+                raise ArticleNotFoundError("Article was not found")
+            actions = await session.scalars(
+                select(EditorialAction)
+                .where(EditorialAction.article_id == article_id)
+                .order_by(EditorialAction.created_at.desc(), EditorialAction.id.desc())
+                .limit(safe_limit)
+            )
+            return [
+                EditorialHistoryEntry(
+                    action=item.action,
+                    actor_telegram_id=item.actor_telegram_id,
+                    created_at=item.created_at,
+                    details=item.details or {},
+                )
+                for item in actions
+            ]
