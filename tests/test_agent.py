@@ -36,7 +36,7 @@ class FakeProvider:
 
     async def create_chat_completion(self, **kwargs):
         self.calls += 1
-        self.max_tokens.append(kwargs["max_tokens"])
+        self.max_tokens.append(kwargs["max_completion_tokens"])
         if self.calls == 1:
             arguments = json.dumps({"text": "one two three", "max_words": 5})
             call = SimpleNamespace(
