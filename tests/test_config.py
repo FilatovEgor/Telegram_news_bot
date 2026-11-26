@@ -15,7 +15,7 @@ def test_rss_feed_urls_are_split_and_trimmed():
         "https://example.com/a.xml",
         "https://example.org/b.xml",
     ]
-    assert settings.openai_model == "gpt-4"
+    assert settings.openai_model == "gpt-6-luna"
 
 
 def test_duplicate_threshold_must_be_between_zero_and_one():
