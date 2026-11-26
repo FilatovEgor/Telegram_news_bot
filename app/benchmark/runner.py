@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import csv
 import json
 from collections.abc import Callable, Sequence
@@ -10,6 +11,7 @@ from typing import Any, Protocol
 from app.ai.agent import EditorialAgent
 from app.benchmark.dataset import BenchmarkArticle
 from app.benchmark.pricing import ModelPricing
+
 
 class BenchmarkSession(Protocol):
     agent: EditorialAgent

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import argparse
 import asyncio
 import json
@@ -11,6 +12,7 @@ from app.benchmark.dataset import load_dataset
 from app.benchmark.pricing import ModelPricing
 from app.benchmark.runner import BenchmarkRunner, write_results
 from app.config import Settings
+
 
 class OpenAISession:
     def __init__(self, model: str, settings: Settings) -> None:

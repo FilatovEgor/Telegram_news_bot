@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+
 @dataclass(frozen=True, slots=True)
 class ModelPricing:
     input_usd_per_million: float

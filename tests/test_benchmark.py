@@ -10,6 +10,7 @@ from app.benchmark.dataset import BenchmarkArticle, load_dataset
 from app.benchmark.pricing import ModelPricing
 from app.benchmark.runner import BenchmarkRunner, write_results
 
+
 def test_load_dataset_validates_and_rejects_duplicate_ids(tmp_path: Path):
     path = tmp_path / "dataset.jsonl"
     row = json.dumps({"article_id": "a1", "title": "Title", "content": "Body"})
