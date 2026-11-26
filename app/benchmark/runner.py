@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -72,6 +73,7 @@ class BenchmarkRunner:
         editorial_status = "error"
         translation_status = "not_applicable"
         error = None
+        started = time.monotonic()
         try:
             execution = await agent.create_editorial_package(article.title, article.content, article.source_url, list(article.tags))
             editorial_status = "success"
@@ -93,6 +95,7 @@ class BenchmarkRunner:
                 duration_ms += translated.duration_ms
         except Exception as exc:
             error = f"{type(exc).__name__}: {str(exc)[:500]}"
+        duration_ms = max(duration_ms, int((time.monotonic() - started) * 1000))
         pricing = self._pricing.get(model)
         return BenchmarkResult(
             run_id=run_id, timestamp=datetime.now(UTC).isoformat(), article_id=article.article_id,
