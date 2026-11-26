@@ -5,7 +5,7 @@ A multi-source, AI-assisted editorial and Telegram publishing platform. The uplo
 ## Product decisions
 
 - **Telegram:** aiogram 3.x Bot API. Telethon is not required for the current MRC/RSS sources.
-- **AI:** OpenAI GPT-4 is the primary model. The bounded editorial agent uses allowlisted local tools; GigaChat remains an optional provider extension.
+- **AI:** OpenAI GPT-6 Luna (`gpt-6-luna`) is the primary model. The bounded editorial agent uses allowlisted local tools; GigaChat remains an optional provider extension.
 - **Sources:** multiple adapters, initially MRC and configurable RSS feeds.
 - **Database:** PostgreSQL from the beginning, SQLAlchemy 2.x async and Alembic.
 - **Runtime:** Python 3.13, HTTPX and Docker Compose.
@@ -72,9 +72,9 @@ A message send and a database commit cannot be made one atomic transaction acros
 
 ## AI providers
 
-AI_PROVIDER=openai is the default and OPENAI_MODEL=gpt-4 preserves the requested GPT-4 integration. GigaChat credentials are not required for the default deployment; GigaChat remains a separately installable provider extension.
+AI_PROVIDER=openai is the default and OPENAI_MODEL=gpt-6-luna selects GPT-6 Luna. The OpenAI adapter uses Chat Completions function calling with `reasoning_effort=none`, as required for GPT-6 Luna, and omits the unsupported custom temperature setting. GPT-6 requests use `max_completion_tokens`; legacy model overrides continue to use their compatible token-limit parameter. GigaChat credentials are not required for the default deployment; GigaChat remains a separately installable provider extension.
 
-AI resource controls are configurable through AI_REQUEST_TIMEOUT_SECONDS, AI_RUN_TIMEOUT_SECONDS, AI_RETRY_ATTEMPTS, AI_RETRY_BASE_DELAY_SECONDS, AI_MAX_TOOL_ROUNDS, AI_MAX_INPUT_CHARS, AI_MAX_COMPLETION_TOKENS_PER_REQUEST, AI_MAX_COMPLETION_TOKENS_PER_ARTICLE and AI_SUMMARY_MAX_WORDS.
+For a legacy non-GPT-6 model override, `OPENAI_TEMPERATURE` is still available; it is not sent to GPT-6 Luna. AI resource controls are configurable through AI_REQUEST_TIMEOUT_SECONDS, AI_RUN_TIMEOUT_SECONDS, AI_RETRY_ATTEMPTS, AI_RETRY_BASE_DELAY_SECONDS, AI_MAX_TOOL_ROUNDS, AI_MAX_INPUT_CHARS, AI_MAX_COMPLETION_TOKENS_PER_REQUEST, AI_MAX_COMPLETION_TOKENS_PER_ARTICLE and AI_SUMMARY_MAX_WORDS.
 
 ## Legacy SQLite archive
 
