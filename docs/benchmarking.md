@@ -39,7 +39,7 @@ These values are illustrative only; replace them with current account-applicable
 
 Each run creates a timestamped directory under data/benchmark/runs/ with results.jsonl, metrics.csv, and human_review.csv. The human review file contains blank scores for factual accuracy, completeness, hallucination severity, editorial quality, translation fidelity, critical hallucination, acceptance, and reviewer notes.
 
-Score outputs blind to model identity where practical. Use 1–5 for quality dimensions. Mark critical factual hallucinations explicitly and treat them as failures regardless of style. Compare models on identical article IDs; do not treat model-reported confidence as factual accuracy.
+Score outputs blind to model identity where practical. For factual accuracy, completeness, editorial quality, and translation fidelity, use 1 (poor) to 5 (excellent). For hallucination severity, use 1 (none detected) to 5 (severe). Mark critical factual hallucinations explicitly and treat them as failures regardless of style. Compare models on identical article IDs; do not treat model-reported confidence as factual accuracy.
 
 ## Safety and limitations
 

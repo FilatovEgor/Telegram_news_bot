@@ -3,7 +3,9 @@ import csv
 import json
 from pathlib import Path
 from types import SimpleNamespace
+
 import pytest
+
 from app.benchmark.dataset import BenchmarkArticle, load_dataset
 from app.benchmark.pricing import ModelPricing
 from app.benchmark.runner import BenchmarkRunner, write_results

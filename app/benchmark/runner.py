@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
+
 from app.ai.agent import EditorialAgent
 from app.benchmark.dataset import BenchmarkArticle
 from app.benchmark.pricing import ModelPricing
@@ -51,7 +52,7 @@ class BenchmarkRunner:
             raise ValueError("At least one non-empty model name is required")
         if len(set(models)) != len(models):
             raise ValueError("Model names must be unique")
-        run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         results: list[BenchmarkResult] = []
         for model in models:
             session = self._session_factory(model)
