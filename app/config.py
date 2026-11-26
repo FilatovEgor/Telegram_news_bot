@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     ai_provider: Literal["openai", "gigachat"] = "openai"
     openai_api_key: SecretStr | None = None
-    openai_model: str = "gpt-4"
+    openai_model: str = "gpt-6-luna"
     openai_temperature: float = 0.2
     gigachat_credentials: SecretStr | None = None
     gigachat_model: str = "GigaChat"

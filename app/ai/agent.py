@@ -217,7 +217,7 @@ class EditorialAgent:
                             ),
                         },
                     ],
-                    max_tokens=min(
+                    max_completion_tokens=min(
                         self._max_completion_tokens_per_request,
                         self._max_completion_tokens_per_article,
                     ),
@@ -295,7 +295,7 @@ class EditorialAgent:
                 messages=messages,
                 tools=schemas,
                 tool_choice="auto",
-                max_tokens=min(self._max_completion_tokens_per_request, remaining_tokens),
+                max_completion_tokens=min(self._max_completion_tokens_per_request, remaining_tokens),
             )
             usage = getattr(response, "usage", None)
             if usage is not None:

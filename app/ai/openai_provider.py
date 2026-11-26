@@ -23,7 +23,17 @@ class OpenAIProvider:
 
     async def create_chat_completion(self, **kwargs: Any) -> Any:
         kwargs.setdefault("model", self.model)
-        kwargs.setdefault("temperature", self.temperature)
+        if self.model.startswith("gpt-6-"):
+            # GPT-6 Luna supports Chat Completions function calling only at effort=none.
+            kwargs.setdefault("reasoning_effort", "none")
+            # GPT-6 reasoning models reject custom sampling parameters.
+            kwargs.pop("temperature", None)
+            if "max_tokens" in kwargs:
+                kwargs["max_completion_tokens"] = kwargs.pop("max_tokens")
+        else:
+            kwargs.setdefault("temperature", self.temperature)
+            if "max_completion_tokens" in kwargs:
+                kwargs["max_tokens"] = kwargs.pop("max_completion_tokens")
         return await self._client.chat.completions.create(**kwargs)
 
     async def close(self) -> None:
