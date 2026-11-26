@@ -85,6 +85,10 @@ The latest supplied SQLite file has a motor table with 646 records and these col
 
 The importer reads the source database in read-only mode, preserves the original row ID and all available legacy fields, and is idempotent. Legacy Send maps to SUMMARIZED because it meant the draft was sent to the moderation chat, not published. Del and Can't del - more 48H map to REJECTED; empty statuses map to DISCOVERED.
 
+## AI model benchmark
+
+See [docs/benchmarking.md](docs/benchmarking.md) for the isolated model-comparison runner, dataset format, cost accounting and human scoring workflow. The benchmark does not publish to Telegram.
+
 ## Development
 
     pip install -e '.[dev]'
