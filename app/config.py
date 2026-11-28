@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     rss_feeds: str = ""
     source_fetch_limit: int = 50
     source_fetch_concurrency: int = 4
+    source_persist_batch_size: int = 100
     http_timeout_seconds: float = 20.0
     http_max_connections: int = 20
     mrc_article_concurrency: int = 5
@@ -65,6 +66,7 @@ class Settings(BaseSettings):
     @field_validator(
         "source_fetch_limit",
         "source_fetch_concurrency",
+        "source_persist_batch_size",
         "http_max_connections",
         "mrc_article_concurrency",
         "source_retry_attempts",
