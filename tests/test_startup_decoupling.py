@@ -56,6 +56,7 @@ def test_ingestion_is_scheduled_immediately_without_startup_wait():
             return limit
 
     scheduler = build_scheduler(FakeIngestionService(), interval_minutes=60, source_limit=17)
+    scheduler.start(paused=True)
     try:
         job = scheduler.get_job("news-ingestion")
         assert job is not None
