@@ -161,7 +161,8 @@ class EditorialService:
             for row in rows
         ]
         previous_cursor = encode_cursor(rows[0].created_at, rows[0].id) if rows and (
-            direction == "previous" or decoded is not None
+            direction == "next" and decoded is not None
+            or direction == "previous" and has_more
         ) else None
         next_cursor = encode_cursor(rows[-1].created_at, rows[-1].id) if rows and (
             direction == "next" and has_more or direction == "previous" and decoded is not None
