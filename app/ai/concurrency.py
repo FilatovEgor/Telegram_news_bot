@@ -1,6 +1,7 @@
 import asyncio
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Literal
+from typing import Literal
 
 Workload = Literal["editorial", "translation"]
 
