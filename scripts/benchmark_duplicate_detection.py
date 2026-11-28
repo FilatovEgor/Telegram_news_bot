@@ -97,9 +97,10 @@ async def run(pairs_count: int) -> dict[str, object]:
             python_start = time.perf_counter()
             python_cpu_start = time.process_time()
             python_matches = {
-                index
-                for index, pair in enumerate(pairs)
-                if title_similarity(pair.incoming, pair.candidate) >= 0.92
+                (incoming_index, candidate_index)
+                for incoming_index, incoming in enumerate(pairs)
+                for candidate_index, candidate in enumerate(pairs)
+                if title_similarity(incoming.incoming, candidate.candidate) >= 0.92
             }
             python_wall_ms = (time.perf_counter() - python_start) * 1000
             python_cpu_ms = (time.process_time() - python_cpu_start) * 1000
@@ -135,7 +136,11 @@ async def run(pairs_count: int) -> dict[str, object]:
                 for index, pair in enumerate(pairs)
                 if pair.is_duplicate
             }
-            python_expected = {index for index, pair in enumerate(pairs) if pair.is_duplicate}
+            python_expected = {
+                (index, index)
+                for index, pair in enumerate(pairs)
+                if pair.is_duplicate
+            }
             python_true_positives = python_matches & python_expected
             candidate_true_positives = expected & retrieved
             candidate_recall = (
@@ -157,6 +162,7 @@ async def run(pairs_count: int) -> dict[str, object]:
                 "python": {
                     "wall_ms": round(python_wall_ms, 3),
                     "cpu_ms": round(python_cpu_ms, 3),
+                    "candidate_comparisons": len(pairs) * len(pairs),
                     "matches": len(python_matches),
                     "precision": round(
                         len(python_true_positives) / len(python_matches), 4
