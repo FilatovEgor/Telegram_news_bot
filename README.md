@@ -61,6 +61,12 @@ The migration service is opt-in under the `migration` profile. The bot service d
 
 At startup the bot verifies PostgreSQL with `SELECT 1` and verifies the configured Telegram token with `getMe`. The container healthcheck repeats these core dependency checks. Optional source ingestion is scheduled immediately in the background and then runs at `INGESTION_INTERVAL_MINUTES`; it does not delay Telegram polling. A source outage therefore affects ingestion telemetry, not the bot's ability to accept Telegram updates. The OpenAI provider is initialized for use by editorial actions and is not a startup readiness dependency.
 
+## Distributed ingestion coordination
+
+Every application instance may register the same ingestion schedule, but the ingestion service acquires a PostgreSQL session-level advisory lock before doing any work. The lock is held on a dedicated database connection for the complete run and is released in a `finally` block; if the process or connection disappears, PostgreSQL releases the session lock. A replica that cannot acquire the lock skips the scheduled run. Manual `/load` and the control-deck feed scan use the same guarded service, so they cannot overlap a scheduled run on another instance.
+
+The advisory lock coordinates ingestion only. It does not elect Telegram update consumers: multi-instance Telegram delivery still requires webhook ingress rather than multiple long-polling consumers. The single-instance polling deployment remains unchanged.
+
 ## Ingestion quality
 
 Transient network errors, HTTP 429 and HTTP 5xx responses are retried with bounded exponential backoff. A shared request limiter spaces requests across adapters, and MRC article concurrency is configurable.
