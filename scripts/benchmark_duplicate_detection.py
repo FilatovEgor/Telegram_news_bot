@@ -141,9 +141,6 @@ async def run(pairs_count: int) -> dict[str, object]:
             candidate_recall = (
                 len(candidate_true_positives) / len(expected) if expected else 1.0
             )
-            candidate_precision = (
-                len(candidate_true_positives) / len(retrieved) if retrieved else 1.0
-            )
             explain = (
                 await connection.execute(
                     text("""
