@@ -64,15 +64,21 @@ async def serve_webhook(
     try:
         await site.start()
         certificate = build_webhook_certificate(settings)
-        webhook_options = {
-            "url": webhook_url,
-            "secret_token": secret_token,
-            "drop_pending_updates": False,
-            "allowed_updates": dispatcher.resolve_used_update_types(),
-        }
-        if certificate is not None:
-            webhook_options["certificate"] = certificate
-        await bot.set_webhook(**webhook_options)
+        if certificate is None:
+            await bot.set_webhook(
+                url=webhook_url,
+                secret_token=secret_token,
+                drop_pending_updates=False,
+                allowed_updates=dispatcher.resolve_used_update_types(),
+            )
+        else:
+            await bot.set_webhook(
+                url=webhook_url,
+                certificate=certificate,
+                secret_token=secret_token,
+                drop_pending_updates=False,
+                allowed_updates=dispatcher.resolve_used_update_types(),
+            )
         logger.info("Telegram webhook listening on %s:%d at %s", settings.webhook_host, settings.webhook_port, settings.webhook_path)
         for sig in (signal.SIGINT, signal.SIGTERM):
             try:
