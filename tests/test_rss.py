@@ -33,3 +33,43 @@ async def test_rss_fetch_normalizes_links_and_reports_invalid_entries():
     assert result.articles[0].url == "https://example.com/news/1"
     assert result.articles[0].external_id == "market-1"
     assert result.articles[0].content == "Markets moved."
+
+
+@pytest.mark.asyncio
+async def test_rss_falls_back_to_canonical_url_when_guid_is_missing():
+    payload = b"""<?xml version="1.0"?>
+    <rss version="2.0"><channel>
+      <item><title>Relative link item</title><link>/news/2</link></item>
+    </channel></rss>"""
+    source = RSSSource(FakeHTTPClient(payload), "https://example.com/rss.xml")
+
+    result = await source.fetch_latest(limit=10)
+
+    assert result.fetched_count == 1
+    assert result.articles[0].url == "https://example.com/news/2"
+    assert result.articles[0].external_id == "https://example.com/news/2"
+
+
+@pytest.mark.asyncio
+async def test_rss_content_cleanup_uses_worker_thread(monkeypatch):
+    import app.sources.rss as rss_module
+
+    payload = b"""<?xml version="1.0"?>
+    <rss version="2.0"><channel>
+      <item><title>Market update</title><link>https://example.com/news/1</link>
+        <description><![CDATA[<p>Markets moved.</p>]]></description>
+      </item>
+    </channel></rss>"""
+    calls = []
+    original = rss_module.asyncio.to_thread
+
+    async def tracking_to_thread(function, *args, **kwargs):
+        calls.append(function.__name__)
+        return await original(function, *args, **kwargs)
+
+    monkeypatch.setattr(rss_module.asyncio, "to_thread", tracking_to_thread)
+    source = RSSSource(FakeHTTPClient(payload), "https://example.com/rss.xml")
+    result = await source.fetch_latest(limit=10)
+
+    assert result.fetched_count == 1
+    assert "_entry_fields" in calls

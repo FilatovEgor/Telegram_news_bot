@@ -105,7 +105,7 @@ Transient network errors, HTTP 429 and HTTP 5xx responses are retried with bound
 
 Each source has a latest health state and an append-only run history. /sources shows the latest status, last attempt, fetched count, consecutive failures, duration and warnings.
 
-Stored URLs are canonicalized by removing known tracking parameters, fragments, default ports and the www prefix. Content hashes ignore case and whitespace differences. Cross-source duplicate candidates are recorded for editorial review using canonical URL, content hash and title similarity. **The bot does not automatically merge, suppress or delete duplicate articles.**
+Stored URLs are canonicalized by removing known tracking parameters, fragments, default ports and the www prefix. Content hashes ignore case and whitespace differences. Cross-source duplicate candidates are recorded for editorial review using canonical URL, content hash and title similarity. Title strings are normalized once per incoming/candidate batch, and a safe length-based upper bound skips `SequenceMatcher` calls that cannot reach the configured threshold. Duplicate-row calculation and RSS HTML extraction run in worker threads so they do not block the event loop. These optimizations preserve the existing similarity decision and review workflow. **The bot does not automatically merge, suppress or delete duplicate articles.**
 
 ## Editorial AI workflow
 

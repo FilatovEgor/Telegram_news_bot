@@ -30,6 +30,13 @@ def _entry_content(entry: object) -> str:
     return BeautifulSoup(str(raw), "html.parser").get_text(" ", strip=True)
 
 
+def _entry_fields(entry: object) -> tuple[str, str, str, datetime | None, str]:
+    raw_url = str(getattr(entry, "link", "")).strip()
+    title = str(getattr(entry, "title", "")).strip()
+    external_id = str(getattr(entry, "id", "")).strip()
+    return raw_url, title, external_id, _entry_date(entry), _entry_content(entry)
+
+
 class RSSSource:
     kind = "rss"
 
@@ -70,22 +77,23 @@ class RSSSource:
         articles: list[SourceArticle] = []
         warnings: list[str] = []
         failed_count = 0
-        for entry in entries:
-            raw_url = str(getattr(entry, "link", "")).strip()
-            title = str(getattr(entry, "title", "")).strip()
+        # HTML extraction is CPU work; keep it off the event loop for all entries.
+        entry_fields = await asyncio.gather(
+            *(asyncio.to_thread(_entry_fields, entry) for entry in entries)
+        )
+        for raw_url, title, external_id, published_at, content in entry_fields:
             canonical_url = canonicalize_url(urljoin(self.feed_url, raw_url)) if raw_url else None
             if not canonical_url or not title:
                 failed_count += 1
                 continue
-            external_id = str(getattr(entry, "id", "") or canonical_url).strip()
             articles.append(
                 SourceArticle(
                     source_key=self.key,
-                    external_id=external_id,
+                    external_id=external_id or canonical_url,
                     url=canonical_url,
                     title=title,
-                    content=_entry_content(entry),
-                    published_at=_entry_date(entry),
+                    content=content,
+                    published_at=published_at,
                     metadata={"feed_host": urlsplit(self.feed_url).netloc.lower()},
                 )
             )

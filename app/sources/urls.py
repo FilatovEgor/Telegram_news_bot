@@ -56,9 +56,17 @@ def normalize_title(value: str) -> str:
     return " ".join(re.sub(r"[^\w]+", " ", normalized, flags=re.UNICODE).split())
 
 
-def title_similarity(left: str, right: str) -> float:
-    first = normalize_title(left)
-    second = normalize_title(right)
+def normalized_title_similarity(first: str, second: str, threshold: float = 0.0) -> float:
+    """Compare normalized titles; skip SequenceMatcher when its maximum possible ratio is too low."""
     if not first or not second:
         return 0.0
+
+    longest = max(len(first), len(second))
+    shortest = min(len(first), len(second))
+    if longest and (2 * shortest / (longest + shortest)) < threshold:
+        return 0.0
     return difflib.SequenceMatcher(None, first, second, autojunk=False).ratio()
+
+
+def title_similarity(left: str, right: str) -> float:
+    return normalized_title_similarity(normalize_title(left), normalize_title(right))
