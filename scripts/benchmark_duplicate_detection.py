@@ -12,7 +12,6 @@ import asyncio
 import json
 import random
 import re
-import statistics
 import time
 from dataclasses import dataclass
 
@@ -51,8 +50,6 @@ def make_pairs(count: int, seed: int = 417) -> list[Pair]:
     for index in range(count):
         base = bases[index % len(bases)]
         if rng.random() < 0.65:
-            candidate = base
-            incoming = base
             mutation = rng.choice(
                 [
                     lambda value: value + " — подробности",
@@ -62,11 +59,10 @@ def make_pairs(count: int, seed: int = 417) -> list[Pair]:
                     lambda value: re.sub(r"\s+", " ", value),
                 ]
             )
-            incoming = mutation(incoming)
-            pairs.append(Pair(incoming, candidate, title_similarity(incoming, candidate) >= 0.92))
+            pairs.append(Pair(mutation(base), base, True))
         else:
             other = bases[(index + rng.randint(1, len(bases) - 1)) % len(bases)]
-            pairs.append(Pair(base, other, title_similarity(base, other) >= 0.92))
+            pairs.append(Pair(base, other, False))
     return pairs
 
 
@@ -78,24 +74,16 @@ async def run(pairs_count: int) -> dict[str, object]:
             await connection.execute(text("""
                 CREATE TEMP TABLE duplicate_benchmark (
                     pair_id integer PRIMARY KEY,
-                    incoming_title text NOT NULL,
-                    candidate_title text NOT NULL,
-                    expected_duplicate boolean NOT NULL
+                    candidate_title text NOT NULL
                 ) ON COMMIT DROP
             """))
             await connection.execute(
                 text("""
-                    INSERT INTO duplicate_benchmark
-                    (pair_id, incoming_title, candidate_title, expected_duplicate)
-                    VALUES (:pair_id, :incoming, :candidate, :expected)
+                    INSERT INTO duplicate_benchmark (pair_id, candidate_title)
+                    VALUES (:pair_id, :candidate)
                 """),
                 [
-                    {
-                        "pair_id": index,
-                        "incoming": pair.incoming,
-                        "candidate": pair.candidate,
-                        "expected": pair.is_duplicate,
-                    }
+                    {"pair_id": index, "candidate": pair.candidate}
                     for index, pair in enumerate(pairs)
                 ],
             )
@@ -107,37 +95,53 @@ async def run(pairs_count: int) -> dict[str, object]:
 
             python_start = time.perf_counter()
             python_cpu_start = time.process_time()
-            python_matches = [
+            python_matches = {
                 index
                 for index, pair in enumerate(pairs)
                 if title_similarity(pair.incoming, pair.candidate) >= 0.92
-            ]
+            }
             python_wall_ms = (time.perf_counter() - python_start) * 1000
             python_cpu_ms = (time.process_time() - python_cpu_start) * 1000
 
-            # pg_trgm is deliberately a broad prefilter. The production Python
-            # SequenceMatcher remains the final decision rule.
+            # LATERAL passes each incoming headline as a query parameter so the
+            # inner lookup can use the GIN index instead of comparing two columns.
             pg_start = time.perf_counter()
             pg_cpu_start = time.process_time()
             rows = (
                 await connection.execute(
                     text("""
-                        SELECT pair_id, expected_duplicate
-                        FROM duplicate_benchmark
-                        WHERE lower(candidate_title) % lower(incoming_title)
-                    """)
+                        WITH inputs AS (
+                            SELECT title, ordinality::integer AS input_id
+                            FROM unnest(CAST(:incoming_titles AS text[]))
+                                 WITH ORDINALITY AS item(title, ordinality)
+                        )
+                        SELECT inputs.input_id, candidates.pair_id
+                        FROM inputs
+                        CROSS JOIN LATERAL (
+                            SELECT pair_id
+                            FROM duplicate_benchmark
+                            WHERE lower(candidate_title) % lower(inputs.title)
+                        ) AS candidates
+                    """),
+                    {"incoming_titles": [pair.incoming for pair in pairs]},
                 )
             ).all()
             pg_wall_ms = (time.perf_counter() - pg_start) * 1000
             pg_cpu_ms = (time.process_time() - pg_cpu_start) * 1000
-            pg_candidates = {row.pair_id for row in rows}
-            expected = {i for i, pair in enumerate(pairs) if pair.is_duplicate}
-            python_set = set(python_matches)
-            # Evaluate candidate recall independently from final Python decisions.
-            true_positive_candidates = expected & pg_candidates
-            recall = len(true_positive_candidates) / len(expected) if expected else 1.0
+            retrieved = {(row.input_id - 1, row.pair_id) for row in rows}
+            expected = {
+                (index, index)
+                for index, pair in enumerate(pairs)
+                if pair.is_duplicate
+            }
+            python_expected = {index for index, pair in enumerate(pairs) if pair.is_duplicate}
+            python_true_positives = python_matches & python_expected
+            candidate_true_positives = expected & retrieved
+            candidate_recall = (
+                len(candidate_true_positives) / len(expected) if expected else 1.0
+            )
             candidate_precision = (
-                len(true_positive_candidates) / len(pg_candidates) if pg_candidates else 1.0
+                len(candidate_true_positives) / len(retrieved) if retrieved else 1.0
             )
             explain = (
                 await connection.execute(
@@ -155,25 +159,25 @@ async def run(pairs_count: int) -> dict[str, object]:
                 "python": {
                     "wall_ms": round(python_wall_ms, 3),
                     "cpu_ms": round(python_cpu_ms, 3),
-                    "matches": len(python_set),
+                    "matches": len(python_matches),
                     "precision": round(
-                        len(python_set & expected) / len(python_set), 4
-                    ) if python_set else 1.0,
-                    "recall": round(len(python_set & expected) / len(expected), 4)
-                    if expected else 1.0,
+                        len(python_true_positives) / len(python_matches), 4
+                    ) if python_matches else 1.0,
+                    "recall": round(
+                        len(python_true_positives) / len(python_expected), 4
+                    ) if python_expected else 1.0,
                 },
                 "pg_trgm_prefilter": {
                     "wall_ms": round(pg_wall_ms, 3),
                     "client_cpu_ms": round(pg_cpu_ms, 3),
-                    "candidates": len(pg_candidates),
+                    "candidates": len(retrieved),
                     "candidate_precision": round(candidate_precision, 4),
-                    "candidate_recall": round(recall, 4),
+                    "candidate_recall": round(candidate_recall, 4),
                     "explain_analyze": explain,
                 },
                 "note": (
-                    "Synthetic labelled headline pairs only. pg_trgm candidate "
-                    "retrieval is not a replacement for SequenceMatcher; inspect "
-                    "candidate_recall before enabling the strategy."
+                    "Synthetic headline labels are generated, not human-reviewed production truth. "
+                    "pg_trgm is a broad candidate prefilter, not a replacement for SequenceMatcher."
                 ),
             }
     finally:
