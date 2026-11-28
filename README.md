@@ -182,3 +182,66 @@ CI runs Ruff, pytest, compileall and the Alembic upgrade against a disposable Po
 ## Security
 
 Never commit .env, bot tokens, API keys, production database files or runtime data. The uploaded development archive contained credential-like values; rotate any that were real before deployment. TLS certificate verification stays enabled.
+
+
+## IP-only Docker webhook deployment
+
+Telegram supports a self-signed webhook certificate whose common name is the server IP address. This deployment keeps TLS termination inside Docker Compose and does not require a registered domain or a host-installed reverse proxy. Telegram must receive the public PEM certificate in the `certificate` parameter when `setWebhook` is called; the application uploads it on each webhook startup. The private key remains in a separate Docker volume mounted only into Nginx.
+
+This is an opt-in deployment overlay. The ordinary `docker compose up -d bot` deployment remains single-instance polling with in-memory FSM. Keep `BOT_TRANSPORT=polling` in the root `.env`; the IP-TLS overlay overrides transport only for its webhook deployment. Do not run polling and webhook stacks for the same bot at the same time.
+
+### Configure the VPS
+
+1. Allow inbound TCP 443 in the DigitalOcean Cloud Firewall and UFW. Keep SSH access open. Do not expose ports 8080, 5432 or 6379.
+2. Set `WEBHOOK_PUBLIC_IP` in the untracked `.env` file to the Droplet's public IPv4 address.
+3. Generate a webhook secret with `openssl rand -hex 32` and set `WEBHOOK_SECRET_TOKEN`.
+4. Keep `DROP_PENDING_UPDATES=false`. Do not put certificate or private-key files in the repository.
+
+Example values:
+
+    BOT_TRANSPORT=polling
+    WEBHOOK_PUBLIC_IP=203.0.113.10
+    WEBHOOK_SECRET_TOKEN=<generated-random-secret>
+    WEBHOOK_CERT_REGENERATE=false
+
+### Deploy
+
+Run these commands from the repository directory. The first command starts PostgreSQL; the second applies migrations once. The final command creates the IP-bound certificate, starts the TLS proxy, and launches the webhook replicas and dedicated worker.
+
+    docker compose up -d db
+    docker compose --profile migration run --rm migrate
+
+    docker compose \
+      -f docker-compose.yml \
+      -f docker-compose.redis.yml \
+      -f docker-compose.webhook.yml \
+      -f docker-compose.worker.yml \
+      -f docker-compose.ip-tls.yml \
+      up --build -d --scale bot=3 --scale worker=1
+
+The public endpoint is `https://<WEBHOOK_PUBLIC_IP>/telegram/webhook`. Only Nginx publishes port 443. It proxies to the bot containers over the private Compose network and dynamically resolves the scaled `bot` service through Docker DNS. The public certificate is mounted read-only into the bot containers for Telegram's certificate upload; the private key is never mounted into a bot container.
+
+Check the services and logs:
+
+    docker compose -f docker-compose.yml -f docker-compose.redis.yml -f docker-compose.webhook.yml -f docker-compose.worker.yml -f docker-compose.ip-tls.yml ps
+    docker compose -f docker-compose.yml -f docker-compose.redis.yml -f docker-compose.webhook.yml -f docker-compose.worker.yml -f docker-compose.ip-tls.yml logs --tail=100 proxy bot
+
+Verify the webhook using the Bot API's `getWebhookInfo` method. Confirm the URL matches the public IP, `has_custom_certificate` is true, and `last_error_message` is empty. Do not paste the bot token into shell history or shared logs.
+
+### Certificate replacement
+
+The certificate is stored in Docker volumes. It is generated once and checked against `WEBHOOK_PUBLIC_IP` on subsequent deployments. If the Droplet IP changes or the certificate needs replacement, stop the webhook stack, set `WEBHOOK_CERT_REGENERATE=true` in `.env`, and run the certificate service with the same Compose files:
+
+    docker compose -f docker-compose.yml -f docker-compose.redis.yml -f docker-compose.webhook.yml -f docker-compose.worker.yml -f docker-compose.ip-tls.yml stop proxy bot
+    docker compose -f docker-compose.yml -f docker-compose.redis.yml -f docker-compose.webhook.yml -f docker-compose.worker.yml -f docker-compose.ip-tls.yml run --rm certgen
+
+Then set `WEBHOOK_CERT_REGENERATE=false` and recreate the proxy and bot services. Each bot registers the current public certificate with Telegram during startup.
+
+### Roll back to single-instance polling
+
+Stop the complete webhook stack before starting polling. Do not use `down -v`, because that would delete PostgreSQL and Redis data.
+
+    docker compose -f docker-compose.yml -f docker-compose.redis.yml -f docker-compose.webhook.yml -f docker-compose.worker.yml -f docker-compose.ip-tls.yml down
+    docker compose up --build -d bot
+
+The base Compose configuration and `.env` retain polling and memory FSM defaults. This rollback does not alter article data or publishing approval state.
