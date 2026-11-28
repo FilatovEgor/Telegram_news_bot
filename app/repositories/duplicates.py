@@ -18,7 +18,6 @@ async def _load_title_candidates(
     *,
     cutoff: datetime,
     source_ids: set[uuid.UUID],
-    similarity_threshold: float,
     candidate_limit: int,
 ) -> dict[uuid.UUID, list[Article]]:
     """Shortlist with pg_trgm; SequenceMatcher remains the final similarity decision."""
@@ -93,7 +92,6 @@ async def record_duplicate_candidates_for_articles(
         articles,
         cutoff=cutoff,
         source_ids=source_ids,
-        similarity_threshold=similarity_threshold,
         candidate_limit=candidate_limit,
     )
 
