@@ -41,4 +41,4 @@ def test_webhook_certificate_is_wrapped_as_uploadable_input_file(tmp_path):
     upload = build_webhook_certificate(settings)
 
     assert isinstance(upload, FSInputFile)
-    assert upload.path == certificate
+    assert upload.path == str(certificate)
