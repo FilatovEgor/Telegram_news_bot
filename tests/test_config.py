@@ -176,3 +176,76 @@ def test_blank_redis_url_is_treated_as_unset():
     )
 
     assert settings.redis_url is None
+
+
+def test_polling_remains_the_default_transport():
+    settings = Settings(database_url="postgresql+asyncpg://user:pass@localhost/news")
+
+    assert settings.bot_transport == "polling"
+    assert settings.webhook_url is None
+
+
+def test_webhook_transport_requires_https_url_and_secret():
+    settings = Settings(
+        database_url="postgresql+asyncpg://user:pass@localhost/news",
+        bot_token="test-token",
+        openai_api_key="test-key",
+        bot_transport="webhook",
+        webhook_base_url="https://news.example.com/",
+        webhook_secret_token="secret_token-123",
+    )
+
+    settings.validate_runtime()
+
+    assert settings.webhook_url == "https://news.example.com/telegram/webhook"
+    assert settings.webhook_secret_value == "secret_token-123"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"webhook_secret_token": "secret"}, "WEBHOOK_BASE_URL is required"),
+        ({"webhook_base_url": "https://news.example.com"}, "WEBHOOK_SECRET_TOKEN is required"),
+        (
+            {
+                "webhook_base_url": "https://news.example.com",
+                "webhook_secret_token": "secret",
+                "drop_pending_updates": True,
+            },
+            "DROP_PENDING_UPDATES must be false",
+        ),
+    ],
+)
+def test_webhook_runtime_rejects_missing_or_unsafe_settings(overrides, message):
+    settings = Settings(
+        database_url="postgresql+asyncpg://user:pass@localhost/news",
+        bot_token="test-token",
+        openai_api_key="test-key",
+        bot_transport="webhook",
+        **overrides,
+    )
+
+    with pytest.raises(ValueError, match=message):
+        settings.validate_runtime()
+
+
+@pytest.mark.parametrize(
+    ("setting", "value"),
+    [
+        ("webhook_base_url", "http://news.example.com"),
+        ("webhook_base_url", "https://news.example.com/path"),
+        ("webhook_base_url", "https://news.example.com:8080"),
+        ("webhook_secret_token", "secret with spaces"),
+        ("webhook_secret_token", "bad$token"),
+        ("webhook_path", "telegram/webhook"),
+        ("webhook_path", "/hook?token=bad"),
+        ("webhook_port", 0),
+        ("webhook_port", 65536),
+    ],
+)
+def test_webhook_settings_reject_invalid_values(setting, value):
+    with pytest.raises(ValidationError):
+        Settings(
+            database_url="postgresql+asyncpg://user:pass@localhost/news",
+            **{setting: value},
+        )

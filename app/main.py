@@ -26,6 +26,7 @@ from app.services.ingestion import IngestionService
 from app.services.publishing import PublicationService
 from app.services.translation import TranslationService
 from app.sources.registry import build_sources
+from app.webhook import serve_webhook
 
 logger = logging.getLogger(__name__)
 
@@ -105,9 +106,16 @@ async def run_application(settings: Settings) -> None:
             source_limit=settings.source_fetch_limit,
         )
         scheduler.start()
-        await bot.delete_webhook(drop_pending_updates=settings.drop_pending_updates)
-        logger.info("Starting Telegram News Bot 2.0 with %d source(s)", len(sources))
-        await dispatcher.start_polling(bot, allowed_updates=dispatcher.resolve_used_update_types())
+        logger.info(
+            "Starting Telegram News Bot 2.0 with %d source(s) using %s transport",
+            len(sources),
+            settings.bot_transport,
+        )
+        if settings.bot_transport == "webhook":
+            await serve_webhook(dispatcher, bot, settings)
+        else:
+            await bot.delete_webhook(drop_pending_updates=settings.drop_pending_updates)
+            await dispatcher.start_polling(bot, allowed_updates=dispatcher.resolve_used_update_types())
     finally:
         if scheduler is not None and scheduler.running:
             scheduler.shutdown(wait=False)
