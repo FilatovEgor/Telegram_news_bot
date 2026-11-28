@@ -1,5 +1,9 @@
 import pytest
 
+from sqlalchemy.pool import NullPool
+
+from app.config import Settings
+from app.database import advisory_lock
 from app.database.advisory_lock import (
     AdvisoryLockUnavailableError,
     PostgresAdvisoryLock,
@@ -121,3 +125,25 @@ async def test_advisory_lock_invalidates_connection_if_unlock_fails(caplog):
     assert await lock.run(operation) == "completed"
     assert connection.invalidated
     assert "invalidating its connection" in caplog.text
+
+
+def test_advisory_lock_engine_uses_null_pool(monkeypatch):
+    captured = {}
+    engine = object()
+
+    def fake_create_async_engine(url, **kwargs):
+        captured["url"] = url
+        captured.update(kwargs)
+        return engine
+
+    monkeypatch.setattr(advisory_lock, "create_async_engine", fake_create_async_engine)
+    settings = Settings(database_url="postgresql+asyncpg://user:pass@localhost/news")
+
+    result = advisory_lock.build_advisory_lock_engine(settings)
+
+    assert result is engine
+    assert captured == {
+        "url": settings.database_url_value,
+        "poolclass": NullPool,
+        "pool_pre_ping": True,
+    }
