@@ -1,4 +1,6 @@
+import re
 from functools import lru_cache
+from urllib.parse import urlsplit
 from typing import Literal
 
 from pydantic import SecretStr, field_validator
@@ -21,6 +23,13 @@ class Settings(BaseSettings):
     fsm_key_prefix: str = "tgnews:fsm"
     fsm_state_ttl_seconds: int = 86400
     fsm_data_ttl_seconds: int = 86400
+
+    bot_transport: Literal["polling", "webhook"] = "polling"
+    webhook_base_url: str | None = None
+    webhook_path: str = "/telegram/webhook"
+    webhook_secret_token: SecretStr | None = None
+    webhook_host: str = "0.0.0.0"
+    webhook_port: int = 8080
 
     ai_provider: Literal["openai", "gigachat"] = "openai"
     openai_api_key: SecretStr | None = None
@@ -71,6 +80,48 @@ class Settings(BaseSettings):
     def normalize_empty_redis_url(cls, value: SecretStr | str | None) -> SecretStr | str | None:
         if isinstance(value, str) and not value.strip():
             return None
+        return value
+
+    @field_validator("webhook_base_url", mode="before")
+    @classmethod
+    def normalize_webhook_base_url(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        normalized = value.strip().rstrip("/")
+        parsed = urlsplit(normalized)
+        if parsed.scheme != "https" or not parsed.netloc or parsed.path:
+            raise ValueError("WEBHOOK_BASE_URL must be an HTTPS origin without a path")
+        return normalized
+
+    @field_validator("webhook_secret_token", mode="before")
+    @classmethod
+    def validate_webhook_secret_token(cls, value: SecretStr | str | None) -> SecretStr | str | None:
+        if isinstance(value, str) and not value.strip():
+            return None
+        secret = value.get_secret_value() if isinstance(value, SecretStr) else value
+        if secret is not None and (len(secret) > 256 or not re.fullmatch(r"[A-Za-z0-9_-]+", secret)):
+            raise ValueError("WEBHOOK_SECRET_TOKEN must use 1-256 letters, digits, underscores or hyphens")
+        return value
+
+    @field_validator("webhook_path")
+    @classmethod
+    def validate_webhook_path(cls, value: str) -> str:
+        if not value.startswith("/") or "?" in value or "#" in value:
+            raise ValueError("WEBHOOK_PATH must be an absolute URL path without query or fragment")
+        return value
+
+    @field_validator("webhook_host")
+    @classmethod
+    def validate_webhook_host(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("WEBHOOK_HOST must not be empty")
+        return value.strip()
+
+    @field_validator("webhook_port")
+    @classmethod
+    def validate_webhook_port(cls, value: int) -> int:
+        if not 1 <= value <= 65535:
+            raise ValueError("WEBHOOK_PORT must be between 1 and 65535")
         return value
 
     @field_validator("fsm_key_prefix")
@@ -204,6 +255,19 @@ class Settings(BaseSettings):
         return self.redis_url.get_secret_value() if self.redis_url is not None else None
 
     @property
+    def webhook_secret_value(self) -> str | None:
+        return (
+            self.webhook_secret_token.get_secret_value()
+            if self.webhook_secret_token is not None else None
+        )
+
+    @property
+    def webhook_url(self) -> str | None:
+        if self.webhook_base_url is None:
+            return None
+        return f"{self.webhook_base_url}{self.webhook_path}"
+
+    @property
     def db_pool_capacity_per_instance(self) -> int:
         """Maximum simultaneous DB connections this process can hold."""
         return self.db_pool_size + self.db_max_overflow
@@ -213,6 +277,13 @@ class Settings(BaseSettings):
             raise ValueError("BOT_TOKEN is required to run the Telegram bot")
         if self.fsm_storage == "redis" and self.redis_url is None:
             raise ValueError("REDIS_URL is required when FSM_STORAGE=redis")
+        if self.bot_transport == "webhook":
+            if self.webhook_base_url is None:
+                raise ValueError("WEBHOOK_BASE_URL is required when BOT_TRANSPORT=webhook")
+            if self.webhook_secret_token is None:
+                raise ValueError("WEBHOOK_SECRET_TOKEN is required when BOT_TRANSPORT=webhook")
+            if self.drop_pending_updates:
+                raise ValueError("DROP_PENDING_UPDATES must be false in webhook mode")
         if self.ai_provider == "openai" and self.openai_api_key is None:
             raise ValueError("OPENAI_API_KEY is required when AI_PROVIDER=openai")
         if self.ai_provider == "gigachat":
