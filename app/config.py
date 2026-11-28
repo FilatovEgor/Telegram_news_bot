@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     timezone: str = "UTC"
     ingestion_interval_minutes: int = 60
+    ingestion_scheduler_enabled: bool = True
 
     @field_validator("redis_url", mode="before")
     @classmethod
