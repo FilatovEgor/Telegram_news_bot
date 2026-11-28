@@ -89,8 +89,20 @@ class Settings(BaseSettings):
             return None
         normalized = value.strip().rstrip("/")
         parsed = urlsplit(normalized)
-        if parsed.scheme != "https" or not parsed.netloc or parsed.path:
-            raise ValueError("WEBHOOK_BASE_URL must be an HTTPS origin without a path")
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            raise ValueError("WEBHOOK_BASE_URL contains an invalid port") from exc
+        if (
+            parsed.scheme != "https"
+            or not parsed.netloc
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+            or parsed.username is not None
+            or port is not None and port not in {80, 88, 443, 8443}
+        ):
+            raise ValueError("WEBHOOK_BASE_URL must be an HTTPS origin on a Telegram-supported port")
         return normalized
 
     @field_validator("webhook_secret_token", mode="before")
