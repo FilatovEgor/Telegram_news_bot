@@ -6,7 +6,6 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
-from sqlalchemy import text
 
 from app.ai.agent import EditorialAgent
 from app.ai.concurrency import AIConcurrencyLimiter
@@ -16,6 +15,7 @@ from app.config import Settings, get_settings
 from app.database.observability import install_pool_observability, install_slow_query_logging
 from app.database.session import build_session_factory
 from app.logging_config import configure_logging
+from app.readiness import check_readiness
 from app.scheduler.jobs import build_scheduler
 from app.services.editorial import EditorialService
 from app.services.ingestion import IngestionService
@@ -64,9 +64,8 @@ async def run_application(settings: Settings) -> None:
     dispatcher["settings"] = settings
     dispatcher["publication_service"] = PublicationService(session_factory)
     try:
-        async with engine.connect() as connection:
-            await connection.execute(text("SELECT 1"))
-        logger.info("PostgreSQL connection established")
+        await check_readiness(engine, bot)
+        logger.info("Required dependencies are ready")
         http_client = httpx.AsyncClient(
             timeout=httpx.Timeout(settings.http_timeout_seconds),
             limits=httpx.Limits(max_connections=settings.http_max_connections),
@@ -87,7 +86,7 @@ async def run_application(settings: Settings) -> None:
             dispatcher["editorial_service"] = None
             dispatcher["translation_service"] = None
 
-        await ingestion_service.ingest(limit=settings.source_fetch_limit)
+        # The first ingestion is scheduled immediately, but never awaited by bot startup.
         scheduler = build_scheduler(
             ingestion_service,
             timezone=settings.timezone,
