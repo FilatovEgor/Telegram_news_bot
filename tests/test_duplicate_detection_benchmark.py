@@ -17,3 +17,9 @@ def test_duplicate_benchmark_covers_english_and_russian_headlines():
 
     assert any("Central bank" in pair.candidate for pair in pairs)
     assert any("Центральный банк" in pair.candidate for pair in pairs)
+
+
+def test_title_trigram_text_uses_the_same_unicode_normalization():
+    from app.sources.urls import normalize_title, title_trigram_text
+
+    assert title_trigram_text(" ＨＥＬＬＯ—World! ") == normalize_title("hello world")
