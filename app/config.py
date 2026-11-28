@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     mrc_listing_url: str = "https://www.mrc.ru/ajax/news/?query=&condition=OR"
     rss_feeds: str = ""
     source_fetch_limit: int = 50
+    source_fetch_concurrency: int = 4
     http_timeout_seconds: float = 20.0
     http_max_connections: int = 20
     mrc_article_concurrency: int = 5
@@ -63,6 +64,7 @@ class Settings(BaseSettings):
 
     @field_validator(
         "source_fetch_limit",
+        "source_fetch_concurrency",
         "http_max_connections",
         "mrc_article_concurrency",
         "source_retry_attempts",
