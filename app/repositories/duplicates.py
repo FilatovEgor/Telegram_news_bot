@@ -23,7 +23,6 @@ async def _load_title_candidates(
 ) -> dict[uuid.UUID, list[Article]]:
     """Shortlist with pg_trgm; SequenceMatcher remains the final similarity decision."""
     matches: dict[uuid.UUID, list[Article]] = {article.id: [] for article in articles}
-    prefilter_threshold = max(0.1, similarity_threshold - 0.15)
 
     for offset in range(0, len(articles), _TRIGRAM_CANDIDATE_BATCH_SIZE):
         chunk = articles[offset : offset + _TRIGRAM_CANDIDATE_BATCH_SIZE]
