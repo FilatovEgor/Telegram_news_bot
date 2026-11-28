@@ -83,3 +83,14 @@ def test_ai_concurrency_limits_must_be_positive(setting):
             database_url="postgresql+asyncpg://user:pass@localhost/news",
             **{setting: 0},
         )
+
+
+def test_database_observability_threshold_defaults_and_validation():
+    settings = Settings(database_url="postgresql+asyncpg://user:pass@localhost/news")
+    assert settings.db_slow_query_threshold_ms == 250
+
+    with pytest.raises(ValidationError):
+        Settings(
+            database_url="postgresql+asyncpg://user:pass@localhost/news",
+            db_slow_query_threshold_ms=0,
+        )
