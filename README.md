@@ -20,7 +20,7 @@ The async SQLAlchemy pool is configured per bot process. Defaults are:
 - `DB_POOL_RECYCLE_SECONDS=1800` — recycle connections after 30 minutes;
 - `pool_pre_ping=True` — validate pooled connections before reuse.
 
-The maximum connection budget is `DB_POOL_SIZE + DB_MAX_OVERFLOW` per process (10 with defaults). Multiply this by the maximum number of concurrently running bot processes, then reserve capacity for Alembic, administration, monitoring and other services. Keep the sum below PostgreSQL's `max_connections` with operational headroom. Do not increase pool limits without checking the database connection budget and observed pool pressure.
+The SQLAlchemy pool budget is `DB_POOL_SIZE + DB_MAX_OVERFLOW` per process (10 with defaults). During ingestion, the distributed advisory lock also uses one transient, unpooled PostgreSQL connection per application instance attempting the lock. Multiply the pool budget plus this transient connection by the maximum number of concurrently running bot processes, then reserve capacity for Alembic, administration, monitoring and other services. Keep the sum below PostgreSQL's `max_connections` with operational headroom. Do not increase pool limits without checking the database connection budget and observed pool pressure.
 
 Startup logs report configured pool capacity. Pool overflow transitions and invalidated connections are logged without connection strings, SQL, parameters or article content. A sustained overflow warning is a signal to inspect query duration and concurrency before raising limits.
 
