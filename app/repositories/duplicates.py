@@ -27,7 +27,7 @@ async def _load_title_candidates(
 
     for offset in range(0, len(articles), _TRIGRAM_CANDIDATE_BATCH_SIZE):
         chunk = articles[offset : offset + _TRIGRAM_CANDIDATE_BATCH_SIZE]
-        incoming_values = values(
+        incoming_rows = values(
             column("article_id", PG_UUID(as_uuid=True)),
             column("normalized_title", TEXT),
             name="incoming_titles",
@@ -35,7 +35,7 @@ async def _load_title_candidates(
             (article.id, title_trigram_text(article.title))
             for article in chunk
         ])
-        incoming = incoming_values.cte("incoming_titles")
+        incoming = incoming_rows.cte("incoming_titles")
         statement = (
             select(incoming.c.article_id, Article)
             .select_from(
