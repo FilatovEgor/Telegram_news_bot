@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.ai.base import AIProvider
+from app.ai.concurrency import AIConcurrencyLimiter, Workload
 from app.ai.schemas import EditorialPackage, TranslationPackage
 from app.ai.tools import AgentTool, default_tools
 
@@ -86,6 +87,7 @@ class EditorialAgent:
         max_completion_tokens_per_request: int = 1000,
         max_completion_tokens_per_article: int = 1800,
         max_summary_words: int = 200,
+        concurrency_limiter: AIConcurrencyLimiter | None = None,
     ) -> None:
         if not 0 <= max_tool_rounds <= 8:
             raise ValueError("max_tool_rounds must be between 0 and 8")
@@ -113,6 +115,7 @@ class EditorialAgent:
         self._max_completion_tokens_per_request = max_completion_tokens_per_request
         self._max_completion_tokens_per_article = max_completion_tokens_per_article
         self._max_summary_words = max_summary_words
+        self._concurrency_limiter = concurrency_limiter or AIConcurrencyLimiter()
 
     @property
     def provider_name(self) -> str:
@@ -206,6 +209,7 @@ class EditorialAgent:
             async with asyncio.timeout(self._run_timeout_seconds):
                 response = await self._request_with_retry(
                     state,
+                    workload="translation",
                     messages=[
                         {"role": "system", "content": TRANSLATION_SYSTEM_PROMPT},
                         {
@@ -292,6 +296,7 @@ class EditorialAgent:
                 raise RuntimeError("Editorial run reached its completion-token budget")
             response = await self._request_with_retry(
                 state,
+                workload="editorial",
                 messages=messages,
                 tools=schemas,
                 tool_choice="auto",
@@ -365,15 +370,18 @@ class EditorialAgent:
     async def _request_with_retry(
         self,
         state: dict[str, Any],
+        *,
+        workload: Workload = "editorial",
         **kwargs: Any,
     ) -> Any:
         for attempt in range(self._retry_attempts + 1):
             state["attempt_count"] += 1
             try:
-                return await asyncio.wait_for(
-                    self._provider.create_chat_completion(**kwargs),
-                    timeout=self._request_timeout_seconds,
-                )
+                async with self._concurrency_limiter.slot(workload):
+                    return await asyncio.wait_for(
+                        self._provider.create_chat_completion(**kwargs),
+                        timeout=self._request_timeout_seconds,
+                    )
             except Exception as exc:
                 if attempt >= self._retry_attempts or not self._is_retryable(exc):
                     raise
