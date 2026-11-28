@@ -1,11 +1,30 @@
 services:
+  webhook-secret:
+    image: tg-bot-webhook-secret:local
+    build:
+      context: .
+      dockerfile: deploy/webhook-secret/Dockerfile
+    restart: "no"
+    volumes:
+      - webhook_secret:/run/secrets
+
   bot:
     environment:
       BOT_TRANSPORT: webhook
       WEBHOOK_BASE_URL: ${WEBHOOK_BASE_URL:?Set WEBHOOK_BASE_URL in .env}
-      WEBHOOK_SECRET_TOKEN: ${WEBHOOK_SECRET_TOKEN:?Set WEBHOOK_SECRET_TOKEN in .env}
+      # Explicit WEBHOOK_SECRET_TOKEN remains supported as an override.
+      WEBHOOK_SECRET_TOKEN: ${WEBHOOK_SECRET_TOKEN:-}
+      WEBHOOK_SECRET_TOKEN_FILE: /run/secrets/webhook_token
       WEBHOOK_HOST: 0.0.0.0
       WEBHOOK_PORT: 8080
       DROP_PENDING_UPDATES: "false"
+    volumes:
+      - webhook_secret:/run/secrets:ro
     expose:
       - "8080"
+    depends_on:
+      webhook-secret:
+        condition: service_completed_successfully
+
+volumes:
+  webhook_secret:

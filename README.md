@@ -71,13 +71,11 @@ The advisory lock coordinates ingestion only. It does not elect Telegram update 
 
 Polling remains the default and is intended for the existing single-instance setup. Do not scale a polling bot: Telegram permits either long polling or a webhook for a bot, not both, and long polling is a single-consumer update transport.
 
-For a multi-instance deployment, configure a public HTTPS origin and a strong webhook secret in the untracked `.env` file:
+For a multi-instance deployment, configure a public HTTPS origin in the untracked `.env` file:
 
-    BOT_TRANSPORT=webhook
     WEBHOOK_BASE_URL=https://bot.example.com
-    WEBHOOK_SECRET_TOKEN=<random-secret>
 
-Generate a valid secret with `python -c "import secrets; print(secrets.token_urlsafe(32))"`. Terminate TLS at a trusted reverse proxy/load balancer and route `/telegram/webhook` to port 8080 on the bot service. The bot binds internally to `0.0.0.0:8080`; the webhook handler verifies Telegram's `X-Telegram-Bot-Api-Secret-Token` header. Keep the bot containers private behind the proxy and restrict direct access to their webhook port.
+The webhook Compose overlay creates a 256-bit random token on first start and stores it in the persistent `webhook_secret` Docker volume. Bot containers mount that volume read-only and load the token through `WEBHOOK_SECRET_TOKEN_FILE`. Leave `WEBHOOK_SECRET_TOKEN` blank to use the generated value. Existing deployments may continue setting `WEBHOOK_SECRET_TOKEN` directly; that value takes precedence over the file. Do not remove the `webhook_secret` volume during ordinary redeployments. Terminate TLS at a trusted reverse proxy/load balancer and route `/telegram/webhook` to port 8080 on the bot service. The bot binds internally to `0.0.0.0:8080`; the webhook handler verifies Telegram's `X-Telegram-Bot-Api-Secret-Token` header. Keep the bot containers private behind the proxy and restrict direct access to their webhook port.
 
 After PR #9 (Redis FSM), PR #10 (PostgreSQL advisory lock), and this webhook PR are merged, apply migrations once:
 
@@ -194,14 +192,14 @@ This is an opt-in deployment overlay. The ordinary `docker compose up -d bot` de
 
 1. Allow inbound TCP 443 in the DigitalOcean Cloud Firewall and UFW. Keep SSH access open. Do not expose ports 8080, 5432 or 6379.
 2. Set `WEBHOOK_PUBLIC_IP` in the untracked `.env` file to the Droplet's public IPv4 address.
-3. Generate a webhook secret with `openssl rand -hex 32` and set `WEBHOOK_SECRET_TOKEN`.
-4. Keep `DROP_PENDING_UPDATES=false`. Do not put certificate or private-key files in the repository.
+3. Leave `WEBHOOK_SECRET_TOKEN` blank to let Compose generate and persist it automatically. Set it only if you intentionally want to supply an existing token.
+4. Keep `DROP_PENDING_UPDATES=false`. Do not put certificate or private-key files in the repository. Preserve the `webhook_secret` Docker volume across redeployments.
 
 Example values:
 
     BOT_TRANSPORT=polling
     WEBHOOK_PUBLIC_IP=203.0.113.10
-    WEBHOOK_SECRET_TOKEN=<generated-random-secret>
+    WEBHOOK_SECRET_TOKEN=
     WEBHOOK_CERT_REGENERATE=false
 
 ### Deploy

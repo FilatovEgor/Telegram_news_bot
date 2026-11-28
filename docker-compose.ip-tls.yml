@@ -17,16 +17,21 @@ services:
       BOT_TRANSPORT: webhook
       WEBHOOK_BASE_URL: https://${WEBHOOK_PUBLIC_IP:?Set WEBHOOK_PUBLIC_IP in .env}
       WEBHOOK_CERTIFICATE_PATH: /run/webhook-certificate/telegram-webhook-public.pem
-      WEBHOOK_SECRET_TOKEN: ${WEBHOOK_SECRET_TOKEN:?Set WEBHOOK_SECRET_TOKEN in .env}
+      # Explicit WEBHOOK_SECRET_TOKEN remains supported as an override.
+      WEBHOOK_SECRET_TOKEN: ${WEBHOOK_SECRET_TOKEN:-}
+      WEBHOOK_SECRET_TOKEN_FILE: /run/secrets/webhook_token
       WEBHOOK_HOST: 0.0.0.0
       WEBHOOK_PORT: 8080
       DROP_PENDING_UPDATES: "false"
     volumes:
       - webhook_public_cert:/run/webhook-certificate:ro
+      - webhook_secret:/run/secrets:ro
     expose:
       - "8080"
     depends_on:
       certgen:
+        condition: service_completed_successfully
+      webhook-secret:
         condition: service_completed_successfully
 
   proxy:

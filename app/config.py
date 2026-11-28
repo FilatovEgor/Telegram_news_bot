@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import SecretStr, field_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     webhook_base_url: str | None = None
     webhook_path: str = "/telegram/webhook"
     webhook_secret_token: SecretStr | None = None
+    webhook_secret_token_file: str | None = None
     webhook_certificate_path: str | None = None
     webhook_host: str = "0.0.0.0"
     webhook_port: int = 8080
@@ -108,6 +109,36 @@ class Settings(BaseSettings):
         ):
             raise ValueError("WEBHOOK_BASE_URL must be an HTTPS origin on a Telegram-supported port")
         return normalized
+
+    @model_validator(mode="before")
+    @classmethod
+    def load_webhook_secret_from_file(cls, values: object) -> object:
+        if not isinstance(values, dict):
+            return values
+        configured_secret = values.get("webhook_secret_token")
+        if configured_secret is not None and str(
+            configured_secret.get_secret_value()
+            if isinstance(configured_secret, SecretStr)
+            else configured_secret
+        ).strip():
+            return values
+        secret_file = values.get("webhook_secret_token_file")
+        if secret_file is None or not str(secret_file).strip():
+            return values
+        try:
+            secret = Path(str(secret_file).strip()).read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise ValueError("WEBHOOK_SECRET_TOKEN_FILE must point to a readable secret file") from exc
+        values = dict(values)
+        values["webhook_secret_token"] = secret or None
+        return values
+
+    @field_validator("webhook_secret_token_file", mode="before")
+    @classmethod
+    def normalize_webhook_secret_token_file(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        return value.strip()
 
     @field_validator("webhook_secret_token", mode="before")
     @classmethod

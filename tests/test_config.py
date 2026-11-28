@@ -309,3 +309,45 @@ def test_ip_webhook_certificate_path_must_exist(tmp_path):
     )
     with pytest.raises(ValueError, match="existing PEM certificate file"):
         settings.validate_runtime()
+
+
+def test_webhook_secret_can_be_loaded_from_file_when_env_secret_is_unset(tmp_path):
+    secret_file = tmp_path / "webhook_token"
+    secret_file.write_text("a" * 64 + "\n", encoding="utf-8")
+
+    settings = Settings(
+        database_url="postgresql+asyncpg://user:pass@localhost/news",
+        bot_token="test-token",
+        openai_api_key="test-key",
+        bot_transport="webhook",
+        webhook_base_url="https://news.example.com",
+        webhook_secret_token_file=str(secret_file),
+    )
+
+    settings.validate_runtime()
+    assert settings.webhook_secret_value == "a" * 64
+
+
+def test_webhook_environment_secret_takes_precedence_over_secret_file(tmp_path):
+    secret_file = tmp_path / "webhook_token"
+    secret_file.write_text("file-secret", encoding="utf-8")
+
+    settings = Settings(
+        database_url="postgresql+asyncpg://user:pass@localhost/news",
+        bot_transport="webhook",
+        webhook_base_url="https://news.example.com",
+        webhook_secret_token="environment-secret",
+        webhook_secret_token_file=str(secret_file),
+    )
+
+    assert settings.webhook_secret_value == "environment-secret"
+
+
+def test_missing_webhook_secret_file_fails_with_safe_error(tmp_path):
+    with pytest.raises(ValidationError, match="WEBHOOK_SECRET_TOKEN_FILE"):
+        Settings(
+            database_url="postgresql+asyncpg://user:pass@localhost/news",
+            bot_transport="webhook",
+            webhook_base_url="https://news.example.com",
+            webhook_secret_token_file=str(tmp_path / "missing"),
+        )
