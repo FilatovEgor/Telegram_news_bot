@@ -8,6 +8,11 @@ services:
     env_file: [.env]
     environment:
       INGESTION_SCHEDULER_ENABLED: "true"
+      BOT_TOKEN: ""
+      OPENAI_API_KEY: ""
+      GIGACHAT_CREDENTIALS: ""
+      WEBHOOK_SECRET_TOKEN: ""
+      REDIS_URL: ""
     command: ["python", "-m", "app.worker"]
     depends_on:
       db:
