@@ -71,6 +71,7 @@ async def run(pairs_count: int) -> dict[str, object]:
     pairs = make_pairs(pairs_count)
     try:
         async with engine.begin() as connection:
+            await connection.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
             await connection.execute(text("""
                 CREATE TEMP TABLE duplicate_benchmark (
                     pair_id integer PRIMARY KEY,
@@ -171,8 +172,10 @@ async def run(pairs_count: int) -> dict[str, object]:
                     "wall_ms": round(pg_wall_ms, 3),
                     "client_cpu_ms": round(pg_cpu_ms, 3),
                     "candidates": len(retrieved),
-                    "candidate_precision": round(candidate_precision, 4),
                     "candidate_recall": round(candidate_recall, 4),
+                    "candidate_reduction_pct": round(
+                        (1 - len(retrieved) / (len(pairs) * len(pairs))) * 100, 2
+                    ) if pairs else 0.0,
                     "explain_analyze": explain,
                 },
                 "note": (
