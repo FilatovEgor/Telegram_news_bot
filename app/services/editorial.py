@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.ai.agent import EditorialAgent, EditorialExecution
@@ -18,6 +18,7 @@ from app.database.models import (
     EditorialAction,
     NewsSource,
 )
+from app.services.pagination import CursorPage, decode_cursor, encode_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -106,27 +107,83 @@ class EditorialService:
         self._settings = settings
 
     async def pending_articles(self, limit: int = 10) -> list[DraftableArticle]:
-        safe_limit = max(1, min(limit, 20))
-        async with self._session_factory() as session:
-            rows = await session.execute(
-                select(Article.id, Article.title, NewsSource.name, Article.canonical_url)
-                .join(NewsSource, NewsSource.id == Article.source_id)
-                .where(Article.status == ArticleStatus.DISCOVERED.value)
-                .order_by(Article.created_at.asc())
-                .limit(safe_limit)
+        page = await self.pending_articles_page(limit=limit)
+        return page.items
+
+    async def pending_articles_page(
+        self,
+        limit: int = 10,
+        cursor: str | None = None,
+        *,
+        direction: str = "next",
+    ) -> CursorPage[DraftableArticle]:
+        safe_limit = max(1, min(limit, 50))
+        decoded = decode_cursor(cursor)
+        if direction not in {"next", "previous"} or (direction == "previous" and decoded is None):
+            raise ValueError("Invalid pagination direction or cursor")
+        statement = (
+            select(
+                Article.id,
+                Article.title,
+                NewsSource.name,
+                Article.canonical_url,
+                Article.created_at,
             )
-            return [
-                DraftableArticle(
-                    id=row.id,
-                    title=row.title,
-                    source_name=row.name,
-                    canonical_url=row.canonical_url,
-                )
-                for row in rows
-            ]
+            .join(NewsSource, NewsSource.id == Article.source_id)
+            .where(Article.status == ArticleStatus.DISCOVERED.value)
+        )
+        if decoded is not None:
+            operator = tuple_(Article.created_at, Article.id)
+            boundary = tuple_(decoded[0], decoded[1])
+            statement = statement.where(
+                operator < boundary if direction == "previous" else operator > boundary
+            )
+        order = (
+            (Article.created_at.desc(), Article.id.desc())
+            if direction == "previous"
+            else (Article.created_at.asc(), Article.id.asc())
+        )
+        async with self._session_factory() as session:
+            rows = list(
+                (await session.execute(statement.order_by(*order).limit(safe_limit + 1))).all()
+            )
+        has_more = len(rows) > safe_limit
+        rows = rows[:safe_limit]
+        if direction == "previous":
+            rows.reverse()
+        items = [
+            DraftableArticle(
+                id=row.id,
+                title=row.title,
+                source_name=row.name,
+                canonical_url=row.canonical_url,
+            )
+            for row in rows
+        ]
+        previous_cursor = encode_cursor(rows[0].created_at, rows[0].id) if rows and (
+            direction == "next" and decoded is not None
+            or direction == "previous" and has_more
+        ) else None
+        next_cursor = encode_cursor(rows[-1].created_at, rows[-1].id) if rows and (
+            direction == "next" and has_more or direction == "previous" and decoded is not None
+        ) else None
+        return CursorPage(items, previous_cursor, next_cursor)
 
     async def review_queue(self, limit: int = 10) -> list[EditorialReviewItem]:
-        safe_limit = max(1, min(limit, 20))
+        page = await self.review_queue_page(limit=limit)
+        return page.items
+
+    async def review_queue_page(
+        self,
+        limit: int = 10,
+        cursor: str | None = None,
+        *,
+        direction: str = "next",
+    ) -> CursorPage[EditorialReviewItem]:
+        safe_limit = max(1, min(limit, 50))
+        decoded = decode_cursor(cursor)
+        if direction not in {"next", "previous"} or (direction == "previous" and decoded is None):
+            raise ValueError("Invalid pagination direction or cursor")
         latest_output_id = (
             select(AIOutput.id)
             .where(
@@ -137,31 +194,54 @@ class EditorialService:
             .limit(1)
             .scalar_subquery()
         )
-        async with self._session_factory() as session:
-            rows = await session.execute(
-                select(Article, NewsSource, AIOutput)
-                .join(NewsSource, NewsSource.id == Article.source_id)
-                .join(AIOutput, AIOutput.id == latest_output_id)
-                .where(
-                    Article.status == ArticleStatus.SUMMARIZED.value,
-                    AIOutput.status == "NEEDS_REVIEW",
-                )
-                .order_by(AIOutput.created_at.asc())
-                .limit(safe_limit)
+        statement = (
+            select(Article, NewsSource, AIOutput)
+            .join(NewsSource, NewsSource.id == Article.source_id)
+            .join(AIOutput, AIOutput.id == latest_output_id)
+            .where(
+                Article.status == ArticleStatus.SUMMARIZED.value,
+                AIOutput.status == "NEEDS_REVIEW",
             )
-            return [
-                EditorialReviewItem(
-                    output_id=output.id,
-                    article_id=article.id,
-                    title=article.title,
-                    source_name=source.name,
-                    source_url=article.canonical_url,
-                    package=EditorialPackage.model_validate_json(output.content),
-                    validation=output.validation_json or {},
-                    status=output.status,
-                )
-                for article, source, output in rows
-            ]
+        )
+        if decoded is not None:
+            operator = tuple_(AIOutput.created_at, AIOutput.id)
+            boundary = tuple_(decoded[0], decoded[1])
+            statement = statement.where(
+                operator < boundary if direction == "previous" else operator > boundary
+            )
+        order = (
+            (AIOutput.created_at.desc(), AIOutput.id.desc())
+            if direction == "previous"
+            else (AIOutput.created_at.asc(), AIOutput.id.asc())
+        )
+        async with self._session_factory() as session:
+            rows = list(
+                (await session.execute(statement.order_by(*order).limit(safe_limit + 1))).all()
+            )
+        has_more = len(rows) > safe_limit
+        rows = rows[:safe_limit]
+        if direction == "previous":
+            rows.reverse()
+        items = [
+            EditorialReviewItem(
+                output_id=output.id,
+                article_id=article.id,
+                title=article.title,
+                source_name=source.name,
+                source_url=article.canonical_url,
+                package=EditorialPackage.model_validate_json(output.content),
+                validation=output.validation_json or {},
+                status=output.status,
+            )
+            for article, source, output in rows
+        ]
+        previous_cursor = encode_cursor(rows[0][2].created_at, rows[0][2].id) if rows and (
+            direction == "previous" or decoded is not None
+        ) else None
+        next_cursor = encode_cursor(rows[-1][2].created_at, rows[-1][2].id) if rows and (
+            direction == "next" and has_more or direction == "previous" and decoded is not None
+        ) else None
+        return CursorPage(items, previous_cursor, next_cursor)
 
     async def get_review_item(self, article_id: uuid.UUID) -> EditorialReviewItem:
         async with self._session_factory() as session:
