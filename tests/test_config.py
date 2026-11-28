@@ -307,5 +307,5 @@ def test_ip_webhook_certificate_path_must_exist(tmp_path):
         webhook_secret_token="secret_token-123",
         webhook_certificate_path=str(tmp_path / "missing.pem"),
     )
-    with pytest.raises(ValueError, match="readable PEM certificate"):
+    with pytest.raises(ValueError, match="existing PEM certificate file"):
         settings.validate_runtime()
