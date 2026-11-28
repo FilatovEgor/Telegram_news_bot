@@ -103,3 +103,40 @@ def test_source_persist_batch_size_must_be_positive():
             database_url="postgresql+asyncpg://user:pass@localhost/news",
             source_persist_batch_size=0,
         )
+
+
+
+def test_database_pool_settings_have_conservative_defaults_and_capacity():
+    settings = Settings(database_url="postgresql+asyncpg://user:pass@localhost/news")
+
+    assert settings.db_pool_size == 5
+    assert settings.db_max_overflow == 5
+    assert settings.db_pool_timeout_seconds == 30
+    assert settings.db_pool_recycle_seconds == 1800
+    assert settings.db_pool_capacity_per_instance == 10
+
+
+def test_database_pool_allows_disabling_overflow():
+    settings = Settings(
+        database_url="postgresql+asyncpg://user:pass@localhost/news",
+        db_pool_size=3,
+        db_max_overflow=0,
+    )
+    assert settings.db_pool_capacity_per_instance == 3
+
+
+@pytest.mark.parametrize(
+    ("setting", "value"),
+    [
+        ("db_pool_size", 0),
+        ("db_max_overflow", -1),
+        ("db_pool_timeout_seconds", 0),
+        ("db_pool_recycle_seconds", 0),
+    ],
+)
+def test_database_pool_settings_reject_invalid_values(setting, value):
+    with pytest.raises(ValidationError):
+        Settings(
+            database_url="postgresql+asyncpg://user:pass@localhost/news",
+            **{setting: value},
+        )
