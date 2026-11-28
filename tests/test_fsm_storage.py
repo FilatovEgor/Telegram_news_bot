@@ -1,4 +1,5 @@
 from aiogram.fsm.storage.memory import MemoryStorage
+
 from app.config import Settings
 from app.fsm import build_fsm_storage
 
@@ -36,7 +37,7 @@ def test_redis_fsm_uses_shared_bot_scoped_keys_and_ttls(monkeypatch):
         fsm_data_ttl_seconds=7200,
     )
 
-    storage, returned_client = fsm.build_fsm_storage(settings)
+    storage, returned_client = build_fsm_storage(settings)
 
     assert isinstance(storage, FakeRedisStorage)
     assert returned_client is redis_client
