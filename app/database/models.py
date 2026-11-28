@@ -11,6 +11,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    Index,
     UniqueConstraint,
     func,
 )
@@ -51,7 +52,10 @@ class NewsSource(Base):
 
 class Article(Base):
     __tablename__ = "articles"
-    __table_args__ = (UniqueConstraint("source_id", "external_id", name="uq_article_source_external_id"),)
+    __table_args__ = (
+        UniqueConstraint("source_id", "external_id", name="uq_article_source_external_id"),
+        Index("ix_articles_created_at_source_id", "created_at", "source_id"),
+    )
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     source_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("news_sources.id", ondelete="RESTRICT"), index=True)
     external_id: Mapped[str] = mapped_column(String(1024))
