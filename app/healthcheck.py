@@ -3,6 +3,7 @@
 import asyncio
 import logging
 
+import httpx
 from aiogram import Bot
 
 from app.config import get_settings
@@ -23,6 +24,12 @@ async def run_healthcheck() -> None:
     fsm_storage, redis_client = build_fsm_storage(settings)
     try:
         await check_readiness(engine, bot, redis_client)
+        if settings.bot_transport == "webhook":
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                response = await client.get(
+                    f"http://127.0.0.1:{settings.webhook_port}/healthz"
+                )
+                response.raise_for_status()
     finally:
         await fsm_storage.close()
         await bot.session.close()
