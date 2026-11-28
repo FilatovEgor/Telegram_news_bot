@@ -111,6 +111,59 @@ def _incoming_keyboard(article_id: uuid.UUID) -> InlineKeyboardMarkup:
     )
 
 
+def _pagination_keyboard(
+    queue: str,
+    *,
+    language: str | None = None,
+    previous_cursor: str | None = None,
+    next_cursor: str | None = None,
+) -> InlineKeyboardMarkup:
+    buttons = []
+    for direction, cursor, label in (
+        ("previous", previous_cursor, "◀ Previous"),
+        ("next", next_cursor, "Next ▶"),
+    ):
+        if cursor:
+            if queue == "incoming":
+                callback_data = f"wf:page:incoming:{direction}:{cursor}"
+            else:
+                callback_data = f"wf:page:review:{language}:{direction}:{cursor}"
+            buttons.append(InlineKeyboardButton(text=label, callback_data=callback_data))
+    rows = [buttons] if buttons else []
+    rows.append([InlineKeyboardButton(text="⌂ Control deck", callback_data="wf:menu:home")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _send_incoming_page(
+    message: Message,
+    editorial_service: EditorialService,
+    *,
+    cursor: str | None = None,
+    direction: str = "next",
+) -> None:
+    page = await editorial_service.pending_articles_page(
+        limit=10, cursor=cursor, direction=direction
+    )
+    if not page.items:
+        await message.answer("📭 Incoming queue is clear.", reply_markup=_back_keyboard())
+        return
+    await message.answer("📰 <b>INCOMING INTELLIGENCE // Select a story</b>")
+    for article in page.items:
+        await message.answer(
+            f"<b>{html.escape(article.title)}</b>\n"
+            f"Source: {html.escape(article.source_name)}\n<code>{article.id}</code>",
+            reply_markup=_incoming_keyboard(article.id),
+        )
+    await message.answer(
+        "Page navigation",
+        reply_markup=_pagination_keyboard(
+            "incoming",
+            previous_cursor=page.previous_cursor,
+            next_cursor=page.next_cursor,
+        ),
+    )
+
+
 def _queue_open_keyboard(article_id: uuid.UUID, language: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -462,32 +515,48 @@ async def _send_queue(
     language: str,
     editorial_service: EditorialService,
     translation_service: TranslationService,
+    *,
+    cursor: str | None = None,
+    direction: str = "next",
 ) -> None:
     if language == "ru":
-        queue = await editorial_service.review_queue(limit=10)
-        if not queue:
+        page = await editorial_service.review_queue_page(
+            limit=10, cursor=cursor, direction=direction
+        )
+        if not page.items:
             await message.answer("📭 Russian review queue is clear.", reply_markup=_back_keyboard())
             return
         await message.answer("🧪 <b>RUSSIAN REVIEW QUEUE</b>")
-        for item in queue:
+        for item in page.items:
             await message.answer(
                 f"<b>{html.escape(item.title)}</b>\n"
                 f"Source: {html.escape(item.source_name)}\n<code>{item.article_id}</code>",
                 reply_markup=_queue_open_keyboard(item.article_id, "ru"),
             )
-        return
-    queue = await translation_service.translation_queue(language="en", limit=10)
-    if not queue:
-        await message.answer("📭 English review queue is clear.", reply_markup=_back_keyboard())
-        return
-    await message.answer("🌐 <b>ENGLISH TRANSLATION QUEUE</b>")
-    for item in queue:
-        await message.answer(
-            f"<b>{html.escape(item.package.title)}</b>\n"
-            f"RU: {html.escape(item.source_title)}\n"
-            f"Source: {html.escape(item.source_name)}\n<code>{item.article_id}</code>",
-            reply_markup=_queue_open_keyboard(item.article_id, "en"),
+    else:
+        page = await translation_service.translation_queue_page(
+            language="en", limit=10, cursor=cursor, direction=direction
         )
+        if not page.items:
+            await message.answer("📭 English review queue is clear.", reply_markup=_back_keyboard())
+            return
+        await message.answer("🌐 <b>ENGLISH TRANSLATION QUEUE</b>")
+        for item in page.items:
+            await message.answer(
+                f"<b>{html.escape(item.package.title)}</b>\n"
+                f"RU: {html.escape(item.source_title)}\n"
+                f"Source: {html.escape(item.source_name)}\n<code>{item.article_id}</code>",
+                reply_markup=_queue_open_keyboard(item.article_id, "en"),
+            )
+    await message.answer(
+        "Page navigation",
+        reply_markup=_pagination_keyboard(
+            "review",
+            language=language,
+            previous_cursor=page.previous_cursor,
+            next_cursor=page.next_cursor,
+        ),
+    )
 
 
 @router.callback_query(F.data.startswith("wf:"))
@@ -510,6 +579,44 @@ async def workflow_callback(
     parts = callback.data.split(":")
     actor_id = callback.from_user.id
 
+    if len(parts) == 5 and parts[:3] == ["wf", "page", "incoming"]:
+        direction, cursor = parts[3], parts[4]
+        if direction not in {"next", "previous"}:
+            await callback.answer("Invalid page navigation.", show_alert=True)
+            return
+        await callback.answer("Loading incoming stories…")
+        try:
+            await _send_incoming_page(
+                target, editorial_service, cursor=cursor, direction=direction
+            )
+        except ValueError:
+            await target.answer("That page cursor is no longer valid. Reopen the queue.")
+        except Exception:
+            logger.exception("Could not load incoming article page")
+            await target.answer("Could not load incoming stories. Check application logs.")
+        return
+    if len(parts) == 6 and parts[:3] == ["wf", "page", "review"]:
+        language, direction, cursor = parts[3], parts[4], parts[5]
+        if language not in {"ru", "en"} or direction not in {"next", "previous"}:
+            await callback.answer("Invalid page navigation.", show_alert=True)
+            return
+        await callback.answer("Loading review queue…")
+        try:
+            await _send_queue(
+                target,
+                language,
+                editorial_service,
+                translation_service,
+                cursor=cursor,
+                direction=direction,
+            )
+        except ValueError:
+            await target.answer("That page cursor is no longer valid. Reopen the queue.")
+        except Exception:
+            logger.exception("Could not load review queue page")
+            await target.answer("Could not load this review queue. Check application logs.")
+        return
+
     if parts == ["wf", "menu", "home"]:
         await callback.answer()
         await target.answer(
@@ -520,21 +627,10 @@ async def workflow_callback(
     if parts == ["wf", "menu", "incoming"]:
         await callback.answer("Loading incoming stories…")
         try:
-            articles = await editorial_service.pending_articles(limit=10)
+            await _send_incoming_page(target, editorial_service)
         except Exception:
             logger.exception("Could not load incoming article queue")
             await target.answer("Could not load incoming stories. Check application logs.")
-            return
-        if not articles:
-            await target.answer("📭 Incoming queue is clear.", reply_markup=_back_keyboard())
-            return
-        await target.answer("📰 <b>INCOMING INTELLIGENCE // Select a story</b>")
-        for article in articles:
-            await target.answer(
-                f"<b>{html.escape(article.title)}</b>\n"
-                f"Source: {html.escape(article.source_name)}\n<code>{article.id}</code>",
-                reply_markup=_incoming_keyboard(article.id),
-            )
         return
     if parts in (["wf", "menu", "review", "ru"], ["wf", "menu", "review", "en"]):
         await callback.answer("Loading review queue…")
