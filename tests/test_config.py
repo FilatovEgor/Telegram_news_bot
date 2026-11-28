@@ -317,6 +317,8 @@ def test_webhook_secret_can_be_loaded_from_file_when_env_secret_is_unset(tmp_pat
 
     settings = Settings(
         database_url="postgresql+asyncpg://user:pass@localhost/news",
+        bot_token="test-token",
+        openai_api_key="test-key",
         bot_transport="webhook",
         webhook_base_url="https://news.example.com",
         webhook_secret_token_file=str(secret_file),
