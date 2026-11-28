@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     ai_run_timeout_seconds: float = 90.0
     ai_retry_attempts: int = 2
     ai_retry_base_delay_seconds: float = 0.5
+    ai_max_concurrent_requests: int = 3
+    ai_max_editorial_concurrency: int = 2
+    ai_max_translation_concurrency: int = 1
     ai_max_tool_rounds: int = 3
     ai_max_input_chars: int = 24000
     ai_max_completion_tokens_per_request: int = 1000
@@ -66,6 +69,9 @@ class Settings(BaseSettings):
         "duplicate_candidate_limit",
         "ingestion_interval_minutes",
         "ai_max_input_chars",
+        "ai_max_concurrent_requests",
+        "ai_max_editorial_concurrency",
+        "ai_max_translation_concurrency",
         "ai_max_completion_tokens_per_request",
         "ai_max_completion_tokens_per_article",
         "ai_summary_max_words",
