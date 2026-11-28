@@ -22,6 +22,17 @@ class FakeEngine:
         return FakeConnection()
 
 
+class FakeRedis:
+    def __init__(self, error=None):
+        self.error = error
+        self.checked = False
+
+    async def ping(self):
+        self.checked = True
+        if self.error:
+            raise self.error
+
+
 class FakeBot:
     def __init__(self, error=None):
         self.error = error
@@ -67,3 +78,22 @@ async def test_ingestion_is_scheduled_immediately_without_startup_wait():
         assert job.next_run_time <= datetime.now(UTC)
     finally:
         scheduler.shutdown(wait=False)
+
+
+@pytest.mark.asyncio
+async def test_readiness_checks_redis_when_configured():
+    redis_client = FakeRedis()
+    bot = FakeBot()
+
+    await check_readiness(FakeEngine(), bot, redis_client)
+
+    assert redis_client.checked
+    assert bot.checked
+
+
+@pytest.mark.asyncio
+async def test_readiness_fails_when_redis_is_unavailable():
+    redis_client = FakeRedis(RuntimeError("Redis unavailable"))
+
+    with pytest.raises(RuntimeError, match="Redis unavailable"):
+        await check_readiness(FakeEngine(), FakeBot(), redis_client)
