@@ -11,6 +11,7 @@ requires-python = ">=3.11,<3.14"
 authors = [{ name = "Telegram News Bot maintainers" }]
 dependencies = [
   "aiogram==3.34.0",
+  "aiohttp>=3.9,<4",
   "alembic>=1.13,<2",
   "apscheduler>=3.10,<4",
   "asyncpg>=0.29,<1",
