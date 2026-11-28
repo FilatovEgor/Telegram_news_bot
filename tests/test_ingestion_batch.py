@@ -9,6 +9,7 @@ from app.database.models import Article, ArticleDuplicate, NewsSource
 from app.repositories.articles import save_discovered_articles
 from app.repositories.duplicates import record_duplicate_candidates_for_articles
 from app.sources.base import SourceArticle
+from app.sources.urls import normalized_content_hash
 
 
 @pytest.mark.asyncio
@@ -69,6 +70,16 @@ async def test_batch_ingestion_and_duplicate_detection_use_bounded_round_trips()
                     ),
                     Article(
                         id=uuid.uuid4(),
+                        source_id=seed_source_id,
+                        external_id="seed-hash",
+                        canonical_url="https://example.com/story/hash",
+                        title="A separate syndicated report",
+                        content="A shared syndicated article body",
+                        content_hash=normalized_content_hash("A shared syndicated article body"),
+                        source_metadata={},
+                    ),
+                    Article(
+                        id=uuid.uuid4(),
                         source_id=incoming_source_id,
                         external_id="same-source",
                         canonical_url="https://example.com/story/same-source",
@@ -102,6 +113,13 @@ async def test_batch_ingestion_and_duplicate_detection_use_bounded_round_trips()
                     ),
                     SourceArticle(
                         source_key=incoming_key,
+                        external_id="incoming-hash",
+                        url="https://example.com/story/new-hash",
+                        title="Another unrelated headline",
+                        content="A shared syndicated article body",
+                    ),
+                    SourceArticle(
+                        source_key=incoming_key,
                         external_id="incoming-title",
                         url="https://example.com/story/new-title",
                         title="Repeated feed entry",
@@ -109,7 +127,7 @@ async def test_batch_ingestion_and_duplicate_detection_use_bounded_round_trips()
                     ),
                 ],
             )
-            assert len(new_articles) == 2
+            assert len(new_articles) == 3
             inserted_article_ids = [article.id for article in new_articles]
 
         async with sessions() as session:
@@ -124,7 +142,7 @@ async def test_batch_ingestion_and_duplicate_detection_use_bounded_round_trips()
                 new_articles,
                 similarity_threshold=0.75,
             )
-            assert duplicate_count == 2
+            assert duplicate_count == 3
             assert query_count == 2  # one candidate SELECT and one bulk duplicate INSERT
 
             pairs = list(
@@ -138,6 +156,7 @@ async def test_batch_ingestion_and_duplicate_detection_use_bounded_round_trips()
             assert {pair.match_type for pair in pairs} == {
                 "canonical_url",
                 "title_similarity",
+                "content_hash",
             }
     finally:
         event.remove(engine.sync_engine, "before_cursor_execute", count_queries)
