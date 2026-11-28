@@ -180,9 +180,17 @@ async def test_ai_concurrency_limiter_caps_global_and_workload_requests():
 async def test_ai_retry_releases_concurrency_slot_during_backoff(monkeypatch):
     from app.ai.concurrency import AIConcurrencyLimiter
 
-    waits = asyncio.Event()
+    backoff_started = asyncio.Event()
     release_backoff = asyncio.Event()
-    provider = RetryingProvider()
+    second_provider_call_started = asyncio.Event()
+
+    class TrackingRetryProvider(RetryingProvider):
+        async def create_chat_completion(self, **kwargs):
+            if self.failed_once:
+                second_provider_call_started.set()
+            return await super().create_chat_completion(**kwargs)
+
+    provider = TrackingRetryProvider()
     limiter = AIConcurrencyLimiter(
         max_concurrent_requests=1,
         max_editorial_concurrency=1,
@@ -191,26 +199,18 @@ async def test_ai_retry_releases_concurrency_slot_during_backoff(monkeypatch):
     agent = EditorialAgent(provider, retry_attempts=1, concurrency_limiter=limiter)
 
     async def controlled_sleep(_seconds):
-        waits.set()
+        backoff_started.set()
         await release_backoff.wait()
 
     monkeypatch.setattr(asyncio, "sleep", controlled_sleep)
     first = asyncio.create_task(
         agent.create_editorial_package("Title A", "Article A", "https://example.com/a")
     )
-    await waits.wait()
+    await backoff_started.wait()
 
-    second_started = asyncio.Event()
-
-    async def second_request():
-        second_started.set()
-        return await agent.create_editorial_package(
-            "Title B", "Article B", "https://example.com/b"
-        )
-
-    second = asyncio.create_task(second_request())
-    await second_started.wait()
-    await asyncio.sleep(0)
-    assert not first.done()
+    second = asyncio.create_task(
+        agent.create_editorial_package("Title B", "Article B", "https://example.com/b")
+    )
+    await asyncio.wait_for(second_provider_call_started.wait(), timeout=1)
     release_backoff.set()
     await asyncio.gather(first, second)
