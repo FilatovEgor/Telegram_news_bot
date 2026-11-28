@@ -1,6 +1,7 @@
 import asyncio
 
 import pytest
+from pydantic import ValidationError
 
 from app.config import Settings
 from app.services.ingestion import IngestionService
@@ -24,20 +25,22 @@ async def test_source_fetches_respect_configured_concurrency_and_keep_order():
     active = 0
     peak_active = 0
     started = []
+    requested_limits = []
 
-    async def fetch(name):
-        async def run(_limit):
+    def make_fetch(name):
+        async def run(limit):
             nonlocal active, peak_active
             active += 1
             peak_active = max(peak_active, active)
             started.append(name)
+            requested_limits.append(limit)
             await asyncio.sleep(0.02)
             active -= 1
             return []
         return run
 
     sources = [
-        FakeSource(name, await fetch(name))
+        FakeSource(name, make_fetch(name))
         for name in ("one", "two", "three", "four", "five")
     ]
     settings = Settings(
@@ -49,7 +52,8 @@ async def test_source_fetches_respect_configured_concurrency_and_keep_order():
     results = await service._fetch_sources(limit=17)
 
     assert peak_active == 2
-    assert started == ["one", "two", "three", "four", "five"]
+    assert sorted(started) == ["five", "four", "one", "three", "two"]
+    assert requested_limits == [17] * 5
     assert len(results) == 5
     assert all(result.error is None for result in results)
 
@@ -93,7 +97,7 @@ def test_source_fetch_concurrency_defaults_and_validation():
     settings = Settings(database_url="postgresql+asyncpg://user:pass@localhost/news")
     assert settings.source_fetch_concurrency == 4
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         Settings(
             database_url="postgresql+asyncpg://user:pass@localhost/news",
             source_fetch_concurrency=0,
