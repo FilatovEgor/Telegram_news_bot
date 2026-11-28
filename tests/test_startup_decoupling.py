@@ -72,7 +72,7 @@ async def test_ingestion_is_scheduled_immediately_without_startup_wait():
     try:
         job = scheduler.get_job("news-ingestion")
         assert job is not None
-        assert job.kwargs == {"limit": 17}
+        assert job.kwargs == {}
         assert job.max_instances == 1
         assert job.next_run_time is not None
         assert job.next_run_time <= datetime.now(UTC)

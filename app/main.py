@@ -11,6 +11,10 @@ from app.ai.concurrency import AIConcurrencyLimiter
 from app.ai.openai_provider import OpenAIProvider
 from app.bot.routers import commands_router, editorial_router, sources_router, workflow_router
 from app.config import Settings, get_settings
+from app.database.advisory_lock import (
+    PostgresAdvisoryLock,
+    build_advisory_lock_engine,
+)
 from app.database.observability import install_pool_observability, install_slow_query_logging
 from app.database.session import build_session_factory
 from app.fsm import build_fsm_storage
@@ -49,6 +53,7 @@ def build_editorial_agent(settings: Settings, provider: OpenAIProvider) -> Edito
 async def run_application(settings: Settings) -> None:
     settings.validate_runtime()
     engine, session_factory = build_session_factory(settings)
+    lock_engine = build_advisory_lock_engine(settings)
     install_slow_query_logging(engine, settings.db_slow_query_threshold_ms)
     install_pool_observability(engine, max_overflow=settings.db_max_overflow)
     http_client = None
@@ -75,7 +80,12 @@ async def run_application(settings: Settings) -> None:
         sources = build_sources(settings, http_client)
         if not sources:
             raise ValueError("No news sources configured; enable MRC or configure RSS_FEEDS")
-        ingestion_service = IngestionService(sources, session_factory, settings=settings)
+        ingestion_service = IngestionService(
+            sources,
+            session_factory,
+            settings=settings,
+            distributed_lock=PostgresAdvisoryLock(lock_engine),
+        )
         dispatcher["ingestion_service"] = ingestion_service
         if ai_provider is not None:
             agent = build_editorial_agent(settings, ai_provider)
@@ -107,6 +117,7 @@ async def run_application(settings: Settings) -> None:
             await http_client.aclose()
         await fsm_storage.close()
         await bot.session.close()
+        await lock_engine.dispose()
         await engine.dispose()
 
 

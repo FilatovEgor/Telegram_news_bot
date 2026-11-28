@@ -16,6 +16,7 @@ from aiogram.types import (
 
 from app.ai.tools import format_telegram_draft
 from app.config import Settings
+from app.database.advisory_lock import AdvisoryLockUnavailableError
 from app.services.editorial import (
     ArticleNotFoundError,
     EditorialAlreadyRunningError,
@@ -667,6 +668,9 @@ async def workflow_callback(
         await callback.answer("Scanning configured sources…")
         try:
             result = await ingestion_service.ingest(limit=settings.source_fetch_limit)
+        except AdvisoryLockUnavailableError:
+            await target.answer("Another bot instance is already scanning the feeds. Please wait for it to finish.")
+            return
         except Exception:
             logger.exception("Manual feed scan failed from control deck")
             await target.answer("Feed scan failed. The error was logged.")
