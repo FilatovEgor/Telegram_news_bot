@@ -66,6 +66,13 @@ class Settings(BaseSettings):
     timezone: str = "UTC"
     ingestion_interval_minutes: int = 60
 
+    @field_validator("redis_url", mode="before")
+    @classmethod
+    def normalize_empty_redis_url(cls, value):
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     @field_validator("fsm_key_prefix")
     @classmethod
     def validate_fsm_key_prefix(cls, value: str) -> str:
