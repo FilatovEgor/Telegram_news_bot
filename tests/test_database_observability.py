@@ -3,7 +3,7 @@ import logging
 import pytest
 from sqlalchemy import create_engine, text
 
-from app.database.observability import install_slow_query_logging
+from app.database.observability import install_pool_observability, install_slow_query_logging
 
 
 def test_slow_query_logging_records_timing_without_sql_or_parameters(caplog):
@@ -31,5 +31,28 @@ def test_slow_query_threshold_cannot_be_negative():
     try:
         with pytest.raises(ValueError, match="must not be negative"):
             install_slow_query_logging(engine, threshold_ms=-1)
+    finally:
+        engine.dispose()
+
+
+
+def test_pool_observability_logs_overflow_transitions_without_connection_data(caplog, tmp_path):
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'pool-observability.db'}",
+        pool_size=1,
+        max_overflow=1,
+    )
+    try:
+        install_pool_observability(engine, max_overflow=1)
+        with caplog.at_level(logging.INFO, logger="app.database.observability"):
+            base_connection = engine.connect()
+            overflow_connection = engine.connect()
+            overflow_connection.close()
+            base_connection.close()
+
+        assert "Database pool configured pool_size=1 max_overflow=1 max_connections=2" in caplog.text
+        assert "Database pool overflow entered" in caplog.text
+        assert "Database pool returned to base capacity" in caplog.text
+        assert "sqlite" not in caplog.text.casefold()
     finally:
         engine.dispose()
