@@ -5,12 +5,24 @@ from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.pool import NullPool
+
+from app.config import Settings
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 INGESTION_ADVISORY_LOCK_KEY = 0x54474E455753  # Stable 64-bit key: "TGNEWS"
+
+
+def build_advisory_lock_engine(settings: Settings) -> AsyncEngine:
+    """Create a no-pool engine so a held lock cannot starve the ingestion session pool."""
+    return create_async_engine(
+        settings.database_url_value,
+        poolclass=NullPool,
+        pool_pre_ping=True,
+    )
 
 
 class AdvisoryLockUnavailableError(RuntimeError):
