@@ -62,3 +62,8 @@ def title_similarity(left: str, right: str) -> float:
     if not first or not second:
         return 0.0
     return difflib.SequenceMatcher(None, first, second, autojunk=False).ratio()
+
+
+def title_trigram_text(value: str) -> str:
+    """Return normalized title text for PostgreSQL trigram candidate retrieval."""
+    return normalize_title(value)
