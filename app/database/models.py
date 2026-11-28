@@ -55,6 +55,7 @@ class Article(Base):
     __table_args__ = (
         UniqueConstraint("source_id", "external_id", name="uq_article_source_external_id"),
         Index("ix_articles_created_at_source_id", "created_at", "source_id"),
+        Index("ix_articles_status_created_at_id", "status", "created_at", "id"),
     )
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     source_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("news_sources.id", ondelete="RESTRICT"), index=True)
@@ -112,6 +113,15 @@ class ArticleDuplicate(Base):
 
 class AIOutput(Base):
     __tablename__ = "ai_outputs"
+    __table_args__ = (
+        Index(
+            "ix_ai_outputs_article_type_created_id",
+            "article_id",
+            "output_type",
+            "created_at",
+            "id",
+        ),
+    )
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     article_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
     provider: Mapped[str] = mapped_column(String(32))
