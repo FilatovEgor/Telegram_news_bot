@@ -167,3 +167,12 @@ def test_fsm_key_prefix_must_not_be_blank():
             database_url="postgresql+asyncpg://user:pass@localhost/news",
             fsm_key_prefix="   ",
         )
+
+
+def test_blank_redis_url_is_treated_as_unset():
+    settings = Settings(
+        database_url="postgresql+asyncpg://user:pass@localhost/news",
+        redis_url="   ",
+    )
+
+    assert settings.redis_url is None
