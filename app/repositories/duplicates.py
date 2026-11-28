@@ -92,6 +92,7 @@ async def record_duplicate_candidates_for_articles(
         articles,
         cutoff=cutoff,
         source_ids=source_ids,
+        similarity_threshold=similarity_threshold,
         candidate_limit=candidate_limit,
     )
 
