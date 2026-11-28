@@ -14,6 +14,7 @@ from app.ai.concurrency import AIConcurrencyLimiter
 from app.ai.openai_provider import OpenAIProvider
 from app.bot.routers import commands_router, editorial_router, sources_router, workflow_router
 from app.config import Settings, get_settings
+from app.database.observability import install_slow_query_logging
 from app.logging_config import configure_logging
 from app.scheduler.jobs import build_scheduler
 from app.services.editorial import EditorialService
@@ -48,6 +49,7 @@ def build_editorial_agent(settings: Settings, provider: OpenAIProvider) -> Edito
 async def run_application(settings: Settings) -> None:
     settings.validate_runtime()
     engine = create_async_engine(settings.database_url_value, pool_pre_ping=True)
+    install_slow_query_logging(engine, settings.db_slow_query_threshold_ms)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     http_client = None
     ai_provider = OpenAIProvider(settings) if settings.ai_provider == "openai" else None
