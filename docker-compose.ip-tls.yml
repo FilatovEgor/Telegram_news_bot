@@ -1,6 +1,9 @@
 services:
   certgen:
-    image: alpine:3.22
+    image: tg-bot-webhook-certgen:local
+    build:
+      context: .
+      dockerfile: deploy/ip-tls/Dockerfile.certgen
     restart: "no"
     environment:
       WEBHOOK_PUBLIC_IP: ${WEBHOOK_PUBLIC_IP:?Set WEBHOOK_PUBLIC_IP in .env}
@@ -8,10 +11,6 @@ services:
     volumes:
       - webhook_public_cert:/public
       - webhook_private_key:/private
-      - ./deploy/ip-tls/generate-certificate.sh:/usr/local/bin/generate-certificate.sh:ro
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - apk add --no-cache openssl >/dev/null && exec /bin/sh /usr/local/bin/generate-certificate.sh
 
   bot:
     environment:
