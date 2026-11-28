@@ -1,0 +1,25 @@
+services:
+  bot:
+    environment:
+      INGESTION_SCHEDULER_ENABLED: "false"
+  worker:
+    build: .
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      INGESTION_SCHEDULER_ENABLED: "true"
+      BOT_TOKEN: ""
+      OPENAI_API_KEY: ""
+      GIGACHAT_CREDENTIALS: ""
+      WEBHOOK_SECRET_TOKEN: ""
+      REDIS_URL: ""
+    command: ["python", "-m", "app.worker"]
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.worker_healthcheck"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3

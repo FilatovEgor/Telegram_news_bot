@@ -99,13 +99,16 @@ async def run_application(settings: Settings) -> None:
             dispatcher["translation_service"] = None
 
         # The first ingestion is scheduled immediately, but never awaited by bot startup.
-        scheduler = build_scheduler(
-            ingestion_service,
-            timezone=settings.timezone,
-            interval_minutes=settings.ingestion_interval_minutes,
-            source_limit=settings.source_fetch_limit,
-        )
-        scheduler.start()
+        if settings.ingestion_scheduler_enabled:
+            scheduler = build_scheduler(
+                ingestion_service,
+                timezone=settings.timezone,
+                interval_minutes=settings.ingestion_interval_minutes,
+                source_limit=settings.source_fetch_limit,
+            )
+            scheduler.start()
+        else:
+            logger.info("In-process ingestion scheduler disabled; dedicated worker owns scheduled ingestion")
         logger.info(
             "Starting Telegram News Bot 2.0 with %d source(s) using %s transport",
             len(sources),

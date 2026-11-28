@@ -249,3 +249,9 @@ def test_webhook_settings_reject_invalid_values(setting, value):
             database_url="postgresql+asyncpg://user:pass@localhost/news",
             **{setting: value},
         )
+
+
+def test_ingestion_scheduler_is_enabled_by_default_for_single_instance():
+    settings = Settings(database_url="postgresql+asyncpg://user:pass@localhost/news")
+
+    assert settings.ingestion_scheduler_enabled is True

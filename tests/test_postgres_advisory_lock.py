@@ -1,4 +1,9 @@
+import asyncio
+import os
+import uuid
+
 import pytest
+from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.config import Settings
@@ -146,3 +151,38 @@ def test_advisory_lock_engine_uses_null_pool(monkeypatch):
         "poolclass": NullPool,
         "pool_pre_ping": True,
     }
+
+
+@pytest.mark.asyncio
+async def test_postgres_advisory_lock_excludes_a_second_connection():
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        pytest.skip("DATABASE_URL is required for PostgreSQL advisory lock integration test")
+
+    engine = create_async_engine(database_url, poolclass=NullPool)
+    lock_key = uuid.uuid4().int & ((1 << 63) - 1)
+    first_lock = PostgresAdvisoryLock(engine, lock_key=lock_key)
+    second_lock = PostgresAdvisoryLock(engine, lock_key=lock_key)
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def hold_lock():
+        entered.set()
+        await release.wait()
+
+    async def second_operation():
+        raise AssertionError("A second process must not enter the locked operation")
+
+    try:
+        first_task = asyncio.create_task(first_lock.run(hold_lock))
+        await asyncio.wait_for(entered.wait(), timeout=5)
+
+        with pytest.raises(AdvisoryLockUnavailableError):
+            await second_lock.run(second_operation)
+
+        release.set()
+        await first_task
+        assert await second_lock.run(lambda: asyncio.sleep(0, result="released")) == "released"
+    finally:
+        release.set()
+        await engine.dispose()

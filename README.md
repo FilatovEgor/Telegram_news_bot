@@ -89,6 +89,18 @@ Then start a Redis-backed webhook deployment:
 
 All replicas share Redis FSM state and PostgreSQL. Their scheduled/manual ingestion attempts are serialized by the PostgreSQL advisory lock. The default `docker compose up` command still uses one polling instance and in-memory FSM. This scaling path does not change approval or publication semantics.
 
+## Dedicated ingestion worker
+
+For a scaled webhook deployment, the optional worker overlay moves APScheduler out of the Telegram bot replicas. The bot service receives updates and handles editorial workflows; the dedicated worker owns scheduled ingestion. The worker does not require a Telegram token, Redis FSM, or an AI provider key. It uses PostgreSQL advisory locking so multiple worker replicas can be run for availability without overlapping ingestion jobs.
+
+Use all four overlays for the recommended multi-instance layout:
+
+    docker compose -f docker-compose.yml -f docker-compose.redis.yml -f docker-compose.webhook.yml -f docker-compose.worker.yml up --build -d --scale bot=3 --scale worker=1
+
+The existing single-instance deployment is unchanged: `INGESTION_SCHEDULER_ENABLED=true` by default, so the bot continues to schedule ingestion in-process. The worker overlay disables that scheduler only on bot replicas and starts the separate worker service. To run multiple worker replicas, increase `--scale worker`; PostgreSQL advisory locks serialize their ingestion attempts.
+
+The database connection budget now applies to every bot and worker process. Include each process's configured SQLAlchemy pool plus one transient advisory-lock connection during ingestion, and reserve headroom for migrations and operations.
+
 ## Ingestion quality
 
 Transient network errors, HTTP 429 and HTTP 5xx responses are retried with bounded exponential backoff. A shared request limiter spaces requests across adapters, and MRC article concurrency is configurable.
