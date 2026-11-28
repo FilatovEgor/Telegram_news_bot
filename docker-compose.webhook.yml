@@ -1,0 +1,11 @@
+services:
+  bot:
+    environment:
+      BOT_TRANSPORT: webhook
+      WEBHOOK_BASE_URL: ${WEBHOOK_BASE_URL:?Set WEBHOOK_BASE_URL in .env}
+      WEBHOOK_SECRET_TOKEN: ${WEBHOOK_SECRET_TOKEN:?Set WEBHOOK_SECRET_TOKEN in .env}
+      WEBHOOK_HOST: 0.0.0.0
+      WEBHOOK_PORT: 8080
+      DROP_PENDING_UPDATES: "false"
+    expose:
+      - "8080"
