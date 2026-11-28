@@ -25,8 +25,8 @@ from app.services.editorial import EditorialService
 from app.services.ingestion import IngestionService
 from app.services.publishing import PublicationService
 from app.services.translation import TranslationService
-from app.webhook import serve_webhook
 from app.sources.registry import build_sources
+from app.webhook import serve_webhook
 
 logger = logging.getLogger(__name__)
 
