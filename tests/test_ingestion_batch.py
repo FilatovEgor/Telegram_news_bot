@@ -143,7 +143,7 @@ async def test_batch_ingestion_and_duplicate_detection_use_bounded_round_trips()
                 similarity_threshold=0.75,
             )
             assert duplicate_count == 3
-            assert query_count == 2  # one candidate SELECT and one bulk duplicate INSERT
+            assert query_count == 3  # exact match SELECT, trigram shortlist, bulk insert
 
             pairs = list(
                 await session.scalars(
