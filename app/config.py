@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     duplicate_title_similarity_threshold: float = 0.92
     duplicate_candidate_limit: int = 300
     db_slow_query_threshold_ms: int = 250
+    db_pool_size: int = 5
+    db_max_overflow: int = 5
+    db_pool_timeout_seconds: float = 30.0
+    db_pool_recycle_seconds: int = 1800
     log_level: str = "INFO"
     timezone: str = "UTC"
     ingestion_interval_minutes: int = 60
@@ -73,6 +77,8 @@ class Settings(BaseSettings):
         "duplicate_lookback_days",
         "duplicate_candidate_limit",
         "db_slow_query_threshold_ms",
+        "db_pool_size",
+        "db_pool_recycle_seconds",
         "ingestion_interval_minutes",
         "ai_max_input_chars",
         "ai_max_concurrent_requests",
@@ -86,6 +92,20 @@ class Settings(BaseSettings):
     def validate_positive_ints(cls, value: int) -> int:
         if value < 1:
             raise ValueError("This setting must be a positive integer")
+        return value
+
+    @field_validator("db_max_overflow")
+    @classmethod
+    def validate_db_max_overflow(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("DB_MAX_OVERFLOW must not be negative")
+        return value
+
+    @field_validator("db_pool_timeout_seconds")
+    @classmethod
+    def validate_db_pool_timeout(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("DB_POOL_TIMEOUT_SECONDS must be greater than zero")
         return value
 
     @field_validator("ai_retry_attempts")
@@ -156,6 +176,11 @@ class Settings(BaseSettings):
     @property
     def database_url_value(self) -> str:
         return self.database_url.get_secret_value()
+
+    @property
+    def db_pool_capacity_per_instance(self) -> int:
+        """Maximum simultaneous DB connections this process can hold."""
+        return self.db_pool_size + self.db_max_overflow
 
     def validate_runtime(self) -> None:
         if self.bot_token is None:
