@@ -1,14 +1,12 @@
 from aiogram.fsm.storage.memory import MemoryStorage
-from redis.asyncio import Redis
-
 from app.config import Settings
-from app import fsm
+from app.fsm import build_fsm_storage
 
 
 def test_memory_fsm_remains_the_default():
     settings = Settings(database_url="postgresql+asyncpg://user:pass@localhost/news")
 
-    storage, redis_client = fsm.build_fsm_storage(settings)
+    storage, redis_client = build_fsm_storage(settings)
 
     assert isinstance(storage, MemoryStorage)
     assert redis_client is None
@@ -27,8 +25,8 @@ def test_redis_fsm_uses_shared_bot_scoped_keys_and_ttls(monkeypatch):
         def __init__(self, **kwargs):
             captured["storage_kwargs"] = kwargs
 
-    monkeypatch.setattr(fsm.Redis, "from_url", fake_from_url)
-    monkeypatch.setattr(fsm, "RedisStorage", FakeRedisStorage)
+    monkeypatch.setattr("app.fsm.Redis.from_url", fake_from_url)
+    monkeypatch.setattr("app.fsm.RedisStorage", FakeRedisStorage)
     settings = Settings(
         database_url="postgresql+asyncpg://user:pass@localhost/news",
         fsm_storage="redis",
