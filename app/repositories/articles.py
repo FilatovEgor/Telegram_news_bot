@@ -30,22 +30,50 @@ async def get_or_create_source(
     return source
 
 
+def _article_values(source: NewsSource, item: SourceArticle) -> dict[str, object]:
+    canonical_url = canonicalize_url(item.url) or item.url
+    return {
+        "id": uuid.uuid4(),
+        "source_id": source.id,
+        "external_id": item.external_id,
+        "canonical_url": canonical_url,
+        "title": item.title,
+        "content": item.content,
+        "content_hash": normalized_content_hash(item.content),
+        "source_published_at": item.published_at,
+        "source_metadata": {"tags": item.tags, **item.metadata},
+    }
+
+
+async def save_discovered_articles(
+    session: AsyncSession,
+    source: NewsSource,
+    items: list[SourceArticle],
+) -> list[Article]:
+    """Insert a source batch in one round trip, ignoring already-seen external IDs."""
+    if not items:
+        return []
+
+    statement = (
+        insert(Article)
+        .values([_article_values(source, item) for item in items])
+        .on_conflict_do_nothing(constraint="uq_article_source_external_id")
+        .returning(Article)
+    )
+    result = await session.scalars(statement)
+    return list(result.all())
+
+
 async def save_discovered_article(
     session: AsyncSession,
     source: NewsSource,
     item: SourceArticle,
 ) -> uuid.UUID | None:
-    canonical_url = canonicalize_url(item.url) or item.url
-    statement = insert(Article).values(
-        id=uuid.uuid4(),
-        source_id=source.id,
-        external_id=item.external_id,
-        canonical_url=canonical_url,
-        title=item.title,
-        content=item.content,
-        content_hash=normalized_content_hash(item.content),
-        source_published_at=item.published_at,
-        source_metadata={"tags": item.tags, **item.metadata},
-    ).on_conflict_do_nothing(constraint="uq_article_source_external_id").returning(Article.id)
+    statement = (
+        insert(Article)
+        .values(**_article_values(source, item))
+        .on_conflict_do_nothing(constraint="uq_article_source_external_id")
+        .returning(Article.id)
+    )
     result = await session.execute(statement)
     return result.scalar_one_or_none()
