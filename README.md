@@ -107,7 +107,7 @@ Transient network errors, HTTP 429 and HTTP 5xx responses are retried with bound
 
 Each source has a latest health state and an append-only run history. /sources shows the latest status, last attempt, fetched count, consecutive failures, duration and warnings.
 
-Stored URLs are canonicalized by removing known tracking parameters, fragments, default ports and the www prefix. Content hashes ignore case and whitespace differences. Cross-source duplicate candidates are recorded for editorial review using canonical URL, content hash and title similarity. **The bot does not automatically merge, suppress or delete duplicate articles.**
+Stored URLs are canonicalized by removing known tracking parameters, fragments, default ports and the www prefix. Content hashes ignore case and whitespace differences. Cross-source duplicate candidates are recorded for editorial review using canonical URL, content hash and title similarity. The fuzzy-title path uses a PostgreSQL `pg_trgm` GIN index to shortlist candidates before Python `SequenceMatcher` applies the configured final threshold; exact URL and content-hash matches remain independent. RSS HTML extraction runs in worker threads to avoid blocking the event loop. **The bot does not automatically merge, suppress or delete duplicate articles.**
 
 ## Editorial AI workflow
 
