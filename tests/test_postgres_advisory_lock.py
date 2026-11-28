@@ -1,5 +1,4 @@
 import pytest
-
 from sqlalchemy.pool import NullPool
 
 from app.config import Settings
