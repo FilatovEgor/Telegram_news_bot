@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.ai.agent import EditorialAgent
+from app.ai.concurrency import AIConcurrencyLimiter
 from app.ai.openai_provider import OpenAIProvider
 from app.bot.routers import commands_router, editorial_router, sources_router, workflow_router
 from app.config import Settings, get_settings
@@ -36,6 +37,11 @@ def build_editorial_agent(settings: Settings, provider: OpenAIProvider) -> Edito
         max_completion_tokens_per_request=settings.ai_max_completion_tokens_per_request,
         max_completion_tokens_per_article=settings.ai_max_completion_tokens_per_article,
         max_summary_words=settings.ai_summary_max_words,
+        concurrency_limiter=AIConcurrencyLimiter(
+            max_concurrent_requests=settings.ai_max_concurrent_requests,
+            max_editorial_concurrency=settings.ai_max_editorial_concurrency,
+            max_translation_concurrency=settings.ai_max_translation_concurrency,
+        ),
     )
 
 
