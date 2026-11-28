@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.ai.agent import EditorialAgent, TranslationExecution
@@ -13,6 +13,7 @@ from app.ai.validation import validate_translation_package
 from app.config import Settings
 from app.database.models import AIOutput, Article, EditorialAction, NewsSource, Publication
 from app.services.editorial import ArticleNotFoundError, blocking_validation_checks
+from app.services.pagination import CursorPage, decode_cursor, encode_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -52,11 +53,29 @@ class TranslationService:
         self._session_factory = session_factory
         self._settings = settings
 
-    async def translation_queue(self, language: str = "en", limit: int = 10) -> list[TranslationReviewItem]:
+    async def translation_queue(
+        self,
+        language: str = "en",
+        limit: int = 10,
+    ) -> list[TranslationReviewItem]:
+        page = await self.translation_queue_page(language=language, limit=limit)
+        return page.items
+
+    async def translation_queue_page(
+        self,
+        language: str = "en",
+        limit: int = 10,
+        cursor: str | None = None,
+        *,
+        direction: str = "next",
+    ) -> CursorPage[TranslationReviewItem]:
         normalized = language.strip().casefold()
         if normalized != self.TARGET_LANGUAGE:
             raise ValueError("Only English translation review is enabled")
-        safe_limit = max(1, min(limit, 20))
+        safe_limit = max(1, min(limit, 50))
+        decoded = decode_cursor(cursor)
+        if direction not in {"next", "previous"} or (direction == "previous" and decoded is None):
+            raise ValueError("Invalid pagination direction or cursor")
         latest_output_id = (
             select(AIOutput.id)
             .where(
@@ -70,28 +89,51 @@ class TranslationService:
             .correlate(Article)
             .scalar_subquery()
         )
-        async with self._session_factory() as session:
-            rows = await session.execute(
-                select(Article, NewsSource, AIOutput)
-                .join(NewsSource, NewsSource.id == Article.source_id)
-                .join(AIOutput, AIOutput.id == latest_output_id)
-                .where(AIOutput.status == "NEEDS_REVIEW")
-                .order_by(AIOutput.created_at.asc())
-                .limit(safe_limit)
+        statement = (
+            select(Article, NewsSource, AIOutput)
+            .join(NewsSource, NewsSource.id == Article.source_id)
+            .join(AIOutput, AIOutput.id == latest_output_id)
+            .where(AIOutput.status == "NEEDS_REVIEW")
+        )
+        if decoded is not None:
+            operator = tuple_(AIOutput.created_at, AIOutput.id)
+            boundary = tuple_(decoded[0], decoded[1])
+            statement = statement.where(
+                operator < boundary if direction == "previous" else operator > boundary
             )
-            return [
-                TranslationReviewItem(
-                    output_id=output.id,
-                    article_id=article.id,
-                    source_title=article.title,
-                    source_name=source.name,
-                    source_url=article.canonical_url,
-                    package=TranslationPackage.model_validate_json(output.content),
-                    validation=output.validation_json or {},
-                    status=output.status,
-                )
-                for article, source, output in rows
-            ]
+        order = (
+            (AIOutput.created_at.desc(), AIOutput.id.desc())
+            if direction == "previous"
+            else (AIOutput.created_at.asc(), AIOutput.id.asc())
+        )
+        async with self._session_factory() as session:
+            rows = list(
+                (await session.execute(statement.order_by(*order).limit(safe_limit + 1))).all()
+            )
+        has_more = len(rows) > safe_limit
+        rows = rows[:safe_limit]
+        if direction == "previous":
+            rows.reverse()
+        items = [
+            TranslationReviewItem(
+                output_id=output.id,
+                article_id=article.id,
+                source_title=article.title,
+                source_name=source.name,
+                source_url=article.canonical_url,
+                package=TranslationPackage.model_validate_json(output.content),
+                validation=output.validation_json or {},
+                status=output.status,
+            )
+            for article, source, output in rows
+        ]
+        previous_cursor = encode_cursor(rows[0][2].created_at, rows[0][2].id) if rows and (
+            direction == "next" and decoded is not None or direction == "previous" and has_more
+        ) else None
+        next_cursor = encode_cursor(rows[-1][2].created_at, rows[-1][2].id) if rows and (
+            direction == "next" and has_more or direction == "previous" and decoded is not None
+        ) else None
+        return CursorPage(items, previous_cursor, next_cursor)
 
     async def get_review_item(self, article_id: uuid.UUID) -> TranslationReviewItem:
         async with self._session_factory() as session:
