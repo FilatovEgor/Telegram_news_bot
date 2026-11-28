@@ -1,7 +1,7 @@
 import re
 from functools import lru_cache
-from urllib.parse import urlsplit
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
