@@ -68,7 +68,7 @@ class Settings(BaseSettings):
 
     @field_validator("redis_url", mode="before")
     @classmethod
-    def normalize_empty_redis_url(cls, value):
+    def normalize_empty_redis_url(cls, value: SecretStr | str | None) -> SecretStr | str | None:
         if isinstance(value, str) and not value.strip():
             return None
         return value
