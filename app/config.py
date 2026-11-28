@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     duplicate_lookback_days: int = 30
     duplicate_title_similarity_threshold: float = 0.92
     duplicate_candidate_limit: int = 300
+    db_slow_query_threshold_ms: int = 250
     log_level: str = "INFO"
     timezone: str = "UTC"
     ingestion_interval_minutes: int = 60
@@ -67,6 +68,7 @@ class Settings(BaseSettings):
         "source_retry_attempts",
         "duplicate_lookback_days",
         "duplicate_candidate_limit",
+        "db_slow_query_threshold_ms",
         "ingestion_interval_minutes",
         "ai_max_input_chars",
         "ai_max_concurrent_requests",
