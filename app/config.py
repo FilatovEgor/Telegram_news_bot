@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     ai_run_timeout_seconds: float = 90.0
     ai_retry_attempts: int = 2
     ai_retry_base_delay_seconds: float = 0.5
+    ai_max_concurrent_requests: int = 3
+    ai_max_editorial_concurrency: int = 2
+    ai_max_translation_concurrency: int = 1
     ai_max_tool_rounds: int = 3
     ai_max_input_chars: int = 24000
     ai_max_completion_tokens_per_request: int = 1000
@@ -36,6 +39,8 @@ class Settings(BaseSettings):
     mrc_listing_url: str = "https://www.mrc.ru/ajax/news/?query=&condition=OR"
     rss_feeds: str = ""
     source_fetch_limit: int = 50
+    source_fetch_concurrency: int = 4
+    source_persist_batch_size: int = 100
     http_timeout_seconds: float = 20.0
     http_max_connections: int = 20
     mrc_article_concurrency: int = 5
@@ -46,6 +51,7 @@ class Settings(BaseSettings):
     duplicate_lookback_days: int = 30
     duplicate_title_similarity_threshold: float = 0.92
     duplicate_candidate_limit: int = 300
+    db_slow_query_threshold_ms: int = 250
     log_level: str = "INFO"
     timezone: str = "UTC"
     ingestion_interval_minutes: int = 60
@@ -59,13 +65,19 @@ class Settings(BaseSettings):
 
     @field_validator(
         "source_fetch_limit",
+        "source_fetch_concurrency",
+        "source_persist_batch_size",
         "http_max_connections",
         "mrc_article_concurrency",
         "source_retry_attempts",
         "duplicate_lookback_days",
         "duplicate_candidate_limit",
+        "db_slow_query_threshold_ms",
         "ingestion_interval_minutes",
         "ai_max_input_chars",
+        "ai_max_concurrent_requests",
+        "ai_max_editorial_concurrency",
+        "ai_max_translation_concurrency",
         "ai_max_completion_tokens_per_request",
         "ai_max_completion_tokens_per_article",
         "ai_summary_max_words",

@@ -32,4 +32,5 @@ jobs:
       - run: ruff check .
       - run: alembic upgrade head
       - run: python -m pytest
+      - run: python -m scripts.benchmark_duplicate_detection --pairs 500
       - run: python -m compileall -q app migrations scripts

@@ -138,3 +138,79 @@ def test_editorial_agent_rejects_invalid_structured_response():
                 "Title", "Article content", "https://example.com/news"
             )
         )
+
+
+@pytest.mark.asyncio
+async def test_ai_concurrency_limiter_caps_global_and_workload_requests():
+    from app.ai.concurrency import AIConcurrencyLimiter
+
+    limiter = AIConcurrencyLimiter(
+        max_concurrent_requests=2,
+        max_editorial_concurrency=1,
+        max_translation_concurrency=1,
+    )
+    active_total = 0
+    active_by_workload = {"editorial": 0, "translation": 0}
+    max_total = 0
+    max_by_workload = {"editorial": 0, "translation": 0}
+
+    async def run_request(workload):
+        nonlocal active_total, max_total
+        async with limiter.slot(workload):
+            active_total += 1
+            active_by_workload[workload] += 1
+            max_total = max(max_total, active_total)
+            max_by_workload[workload] = max(
+                max_by_workload[workload],
+                active_by_workload[workload],
+            )
+            await asyncio.sleep(0.01)
+            active_by_workload[workload] -= 1
+            active_total -= 1
+
+    await asyncio.gather(
+        *(run_request("editorial") for _ in range(5)),
+        *(run_request("translation") for _ in range(5)),
+    )
+    assert max_total == 2
+    assert max_by_workload == {"editorial": 1, "translation": 1}
+
+
+@pytest.mark.asyncio
+async def test_ai_retry_releases_concurrency_slot_during_backoff(monkeypatch):
+    from app.ai.concurrency import AIConcurrencyLimiter
+
+    backoff_started = asyncio.Event()
+    release_backoff = asyncio.Event()
+    second_provider_call_started = asyncio.Event()
+
+    class TrackingRetryProvider(RetryingProvider):
+        async def create_chat_completion(self, **kwargs):
+            if self.failed_once:
+                second_provider_call_started.set()
+            return await super().create_chat_completion(**kwargs)
+
+    provider = TrackingRetryProvider()
+    limiter = AIConcurrencyLimiter(
+        max_concurrent_requests=1,
+        max_editorial_concurrency=1,
+        max_translation_concurrency=1,
+    )
+    agent = EditorialAgent(provider, retry_attempts=1, concurrency_limiter=limiter)
+
+    async def controlled_sleep(_seconds):
+        backoff_started.set()
+        await release_backoff.wait()
+
+    monkeypatch.setattr(asyncio, "sleep", controlled_sleep)
+    first = asyncio.create_task(
+        agent.create_editorial_package("Title A", "Article A", "https://example.com/a")
+    )
+    await backoff_started.wait()
+
+    second = asyncio.create_task(
+        agent.create_editorial_package("Title B", "Article B", "https://example.com/b")
+    )
+    await asyncio.wait_for(second_provider_call_started.wait(), timeout=1)
+    release_backoff.set()
+    await asyncio.gather(first, second)
