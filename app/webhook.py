@@ -5,12 +5,20 @@ import logging
 import signal
 
 from aiogram import Bot, Dispatcher
+from aiogram.types import FSInputFile
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 
 from app.config import Settings
 
 logger = logging.getLogger(__name__)
+
+
+def build_webhook_certificate(settings: Settings) -> FSInputFile | None:
+    """Build the multipart upload for a configured self-signed webhook certificate."""
+    if settings.webhook_certificate_path is None:
+        return None
+    return FSInputFile(settings.webhook_certificate_path)
 
 
 def build_webhook_application(
@@ -55,12 +63,16 @@ async def serve_webhook(
     handled_signals: list[signal.Signals] = []
     try:
         await site.start()
-        await bot.set_webhook(
-            url=webhook_url,
-            secret_token=secret_token,
-            drop_pending_updates=False,
-            allowed_updates=dispatcher.resolve_used_update_types(),
-        )
+        certificate = build_webhook_certificate(settings)
+        webhook_options = {
+            "url": webhook_url,
+            "secret_token": secret_token,
+            "drop_pending_updates": False,
+            "allowed_updates": dispatcher.resolve_used_update_types(),
+        }
+        if certificate is not None:
+            webhook_options["certificate"] = certificate
+        await bot.set_webhook(**webhook_options)
         logger.info("Telegram webhook listening on %s:%d at %s", settings.webhook_host, settings.webhook_port, settings.webhook_path)
         for sig in (signal.SIGINT, signal.SIGTERM):
             try:
