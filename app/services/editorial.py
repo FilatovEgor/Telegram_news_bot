@@ -11,7 +11,6 @@ from app.ai.agent import EditorialAgent, EditorialExecution
 from app.ai.schemas import EditorialPackage
 from app.ai.validation import validate_editorial_package
 from app.config import Settings
-from app.services.pagination import CursorPage, decode_cursor, encode_cursor
 from app.database.models import (
     AIOutput,
     Article,
@@ -19,6 +18,7 @@ from app.database.models import (
     EditorialAction,
     NewsSource,
 )
+from app.services.pagination import CursorPage, decode_cursor, encode_cursor
 
 logger = logging.getLogger(__name__)
 
