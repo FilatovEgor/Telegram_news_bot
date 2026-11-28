@@ -30,10 +30,12 @@ Startup logs report configured pool capacity. Pool overflow transitions and inva
 2. Set BOT_TOKEN, OPENAI_API_KEY, ADMIN_IDS and a strong POSTGRES_PASSWORD.
 3. Configure RSS_FEEDS as comma-separated feed URLs. MRC is enabled by default.
 4. Set PUBLISH_CHANNEL_ID for the source-language channel and PUBLISH_CHANNEL_ID_EN for the English channel. Add the bot to both channels with permission to post.
-5. Run docker compose up --build -d.
-6. Follow logs with docker compose logs -f bot.
+5. Start PostgreSQL with `docker compose up -d db`.
+6. Apply schema migrations explicitly with `docker compose --profile migration run --rm migrate`.
+7. Start the bot with `docker compose up --build -d bot`.
+8. Follow logs with `docker compose logs -f bot`.
 
-The container applies Alembic migrations before starting the bot. PostgreSQL data is persisted in the postgres_data volume. The bot performs an initial ingestion and repeats ingestion on the configured interval. /load triggers manual ingestion and /sources shows source health. Editorial and publishing commands are restricted to configured ADMIN_IDS.
+PostgreSQL data is persisted in the postgres_data volume. The bot begins Telegram polling after required dependency checks; initial ingestion runs in the background and repeats on the configured interval. /load triggers manual ingestion and /sources shows source health. Editorial and publishing commands are restricted to configured ADMIN_IDS.
 
 ## Deployment and startup
 
