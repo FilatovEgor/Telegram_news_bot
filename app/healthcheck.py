@@ -7,6 +7,7 @@ from aiogram import Bot
 
 from app.config import get_settings
 from app.database.session import build_session_factory
+from app.fsm import build_fsm_storage
 from app.logging_config import configure_logging
 from app.readiness import check_readiness
 
@@ -19,9 +20,11 @@ async def run_healthcheck() -> None:
     engine, _ = build_session_factory(settings)
     assert settings.bot_token is not None
     bot = Bot(token=settings.bot_token.get_secret_value())
+    fsm_storage, redis_client = build_fsm_storage(settings)
     try:
-        await check_readiness(engine, bot)
+        await check_readiness(engine, bot, redis_client)
     finally:
+        await fsm_storage.close()
         await bot.session.close()
         await engine.dispose()
 
