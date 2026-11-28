@@ -21,7 +21,9 @@ class CursorPage(Generic[T]):
 def encode_cursor(created_at: datetime, row_id: uuid.UUID) -> str:
     """Encode a UTC timestamp and UUID into a compact Telegram-safe cursor."""
     normalized = created_at.astimezone(UTC)
-    timestamp_us = int(normalized.timestamp() * 1_000_000)
+    epoch = datetime(1970, 1, 1, tzinfo=UTC)
+    delta = normalized - epoch
+    timestamp_us = delta.days * 86_400_000_000 + delta.seconds * 1_000_000 + delta.microseconds
     payload = struct.pack(">q", timestamp_us) + row_id.bytes
     return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
 
