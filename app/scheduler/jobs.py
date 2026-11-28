@@ -17,6 +17,7 @@ def build_scheduler(
 ) -> AsyncIOScheduler:
     """Schedule ingestion immediately and then at the configured interval."""
     scheduler = AsyncIOScheduler(timezone=timezone)
+
     async def run_ingestion() -> None:
         try:
             await ingestion_service.ingest(limit=source_limit)
@@ -25,7 +26,6 @@ def build_scheduler(
 
     scheduler.add_job(
         run_ingestion,
-        kwargs={"limit": source_limit},
         trigger="interval",
         minutes=interval_minutes,
         id="news-ingestion",
