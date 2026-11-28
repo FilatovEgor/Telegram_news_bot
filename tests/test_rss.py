@@ -36,6 +36,21 @@ async def test_rss_fetch_normalizes_links_and_reports_invalid_entries():
 
 
 @pytest.mark.asyncio
+async def test_rss_falls_back_to_canonical_url_when_guid_is_missing():
+    payload = b"""<?xml version="1.0"?>
+    <rss version="2.0"><channel>
+      <item><title>Relative link item</title><link>/news/2</link></item>
+    </channel></rss>"""
+    source = RSSSource(FakeHTTPClient(payload), "https://example.com/rss.xml")
+
+    result = await source.fetch_latest(limit=10)
+
+    assert result.fetched_count == 1
+    assert result.articles[0].url == "https://example.com/news/2"
+    assert result.articles[0].external_id == "https://example.com/news/2"
+
+
+@pytest.mark.asyncio
 async def test_rss_content_cleanup_uses_worker_thread(monkeypatch):
     import app.sources.rss as rss_module
 
