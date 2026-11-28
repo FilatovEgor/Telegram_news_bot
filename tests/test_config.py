@@ -234,6 +234,7 @@ def test_webhook_runtime_rejects_missing_or_unsafe_settings(overrides, message):
     [
         ("webhook_base_url", "http://news.example.com"),
         ("webhook_base_url", "https://news.example.com/path"),
+        ("webhook_base_url", "https://news.example.com:8080"),
         ("webhook_secret_token", "secret with spaces"),
         ("webhook_secret_token", "bad$token"),
         ("webhook_path", "telegram/webhook"),
