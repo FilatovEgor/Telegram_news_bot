@@ -24,6 +24,16 @@ The maximum connection budget is `DB_POOL_SIZE + DB_MAX_OVERFLOW` per process (1
 
 Startup logs report configured pool capacity. Pool overflow transitions and invalidated connections are logged without connection strings, SQL, parameters or article content. A sustained overflow warning is a signal to inspect query duration and concurrency before raising limits.
 
+## FSM storage and Redis
+
+The default `FSM_STORAGE=memory` keeps the existing single-instance deployment unchanged. Memory storage is intentionally retained as the zero-dependency default for local/single-replica operation. To enable persistent shared FSM state on one instance for validation, use the Redis overlay:
+
+    docker compose -f docker-compose.yml -f docker-compose.redis.yml up --build -d
+
+The overlay starts Redis with AOF persistence and a healthcheck, configures `FSM_STORAGE=redis`, and waits for Redis before starting the bot. Redis state and data records use a bot-scoped key prefix and configurable 24-hour TTLs (`FSM_KEY_PREFIX`, `FSM_STATE_TTL_SECONDS`, `FSM_DATA_TTL_SECONDS`). For an external Redis deployment, set `FSM_STORAGE=redis` and `REDIS_URL` directly.
+
+Redis-backed FSM is a prerequisite for multi-instance operation, not the complete scaling switch by itself. Multiple replicas also require webhook-based Telegram ingress (long polling is single-consumer), distributed scheduling, and coordinated worker ownership; those are subsequent Phase 4E steps. Do not scale the bot service until those steps are complete.
+
 ## Start
 
 1. Copy .env.example to .env.

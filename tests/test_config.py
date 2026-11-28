@@ -140,3 +140,39 @@ def test_database_pool_settings_reject_invalid_values(setting, value):
             database_url="postgresql+asyncpg://user:pass@localhost/news",
             **{setting: value},
         )
+
+
+def test_fsm_defaults_preserve_single_instance_memory_storage():
+    settings = Settings(database_url="postgresql+asyncpg://user:pass@localhost/news")
+
+    assert settings.fsm_storage == "memory"
+    assert settings.redis_url is None
+    assert settings.fsm_key_prefix == "tgnews:fsm"
+    assert settings.fsm_state_ttl_seconds == 86400
+    assert settings.fsm_data_ttl_seconds == 86400
+
+
+@pytest.mark.parametrize("setting", ["fsm_state_ttl_seconds", "fsm_data_ttl_seconds"])
+def test_fsm_ttls_must_be_positive(setting):
+    with pytest.raises(ValidationError):
+        Settings(
+            database_url="postgresql+asyncpg://user:pass@localhost/news",
+            **{setting: 0},
+        )
+
+
+def test_fsm_key_prefix_must_not_be_blank():
+    with pytest.raises(ValidationError):
+        Settings(
+            database_url="postgresql+asyncpg://user:pass@localhost/news",
+            fsm_key_prefix="   ",
+        )
+
+
+def test_blank_redis_url_is_treated_as_unset():
+    settings = Settings(
+        database_url="postgresql+asyncpg://user:pass@localhost/news",
+        redis_url="   ",
+    )
+
+    assert settings.redis_url is None

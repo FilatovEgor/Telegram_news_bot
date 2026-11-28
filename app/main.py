@@ -5,7 +5,6 @@ import httpx
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.fsm.storage.memory import MemoryStorage
 
 from app.ai.agent import EditorialAgent
 from app.ai.concurrency import AIConcurrencyLimiter
@@ -14,6 +13,7 @@ from app.bot.routers import commands_router, editorial_router, sources_router, w
 from app.config import Settings, get_settings
 from app.database.observability import install_pool_observability, install_slow_query_logging
 from app.database.session import build_session_factory
+from app.fsm import build_fsm_storage
 from app.logging_config import configure_logging
 from app.readiness import check_readiness
 from app.scheduler.jobs import build_scheduler
@@ -56,7 +56,8 @@ async def run_application(settings: Settings) -> None:
     scheduler = None
     assert settings.bot_token is not None
     bot = Bot(token=settings.bot_token.get_secret_value(), default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    dispatcher = Dispatcher(storage=MemoryStorage())
+    fsm_storage, redis_client = build_fsm_storage(settings)
+    dispatcher = Dispatcher(storage=fsm_storage)
     dispatcher.include_router(commands_router)
     dispatcher.include_router(sources_router)
     dispatcher.include_router(editorial_router)
@@ -64,7 +65,7 @@ async def run_application(settings: Settings) -> None:
     dispatcher["settings"] = settings
     dispatcher["publication_service"] = PublicationService(session_factory)
     try:
-        await check_readiness(engine, bot)
+        await check_readiness(engine, bot, redis_client)
         logger.info("Required dependencies are ready")
         http_client = httpx.AsyncClient(
             timeout=httpx.Timeout(settings.http_timeout_seconds),
@@ -104,6 +105,7 @@ async def run_application(settings: Settings) -> None:
             await ai_provider.close()
         if http_client is not None:
             await http_client.aclose()
+        await fsm_storage.close()
         await bot.session.close()
         await engine.dispose()
 

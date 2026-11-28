@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     drop_pending_updates: bool = False
     database_url: SecretStr
 
+    fsm_storage: Literal["memory", "redis"] = "memory"
+    redis_url: SecretStr | None = None
+    fsm_key_prefix: str = "tgnews:fsm"
+    fsm_state_ttl_seconds: int = 86400
+    fsm_data_ttl_seconds: int = 86400
+
     ai_provider: Literal["openai", "gigachat"] = "openai"
     openai_api_key: SecretStr | None = None
     openai_model: str = "gpt-6-luna"
@@ -60,6 +66,20 @@ class Settings(BaseSettings):
     timezone: str = "UTC"
     ingestion_interval_minutes: int = 60
 
+    @field_validator("redis_url", mode="before")
+    @classmethod
+    def normalize_empty_redis_url(cls, value: SecretStr | str | None) -> SecretStr | str | None:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("fsm_key_prefix")
+    @classmethod
+    def validate_fsm_key_prefix(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("FSM_KEY_PREFIX must not be empty")
+        return value.strip()
+
     @field_validator("openai_temperature")
     @classmethod
     def validate_temperature(cls, value: float) -> float:
@@ -79,6 +99,8 @@ class Settings(BaseSettings):
         "db_slow_query_threshold_ms",
         "db_pool_size",
         "db_pool_recycle_seconds",
+        "fsm_state_ttl_seconds",
+        "fsm_data_ttl_seconds",
         "ingestion_interval_minutes",
         "ai_max_input_chars",
         "ai_max_concurrent_requests",
@@ -178,6 +200,10 @@ class Settings(BaseSettings):
         return self.database_url.get_secret_value()
 
     @property
+    def redis_url_value(self) -> str | None:
+        return self.redis_url.get_secret_value() if self.redis_url is not None else None
+
+    @property
     def db_pool_capacity_per_instance(self) -> int:
         """Maximum simultaneous DB connections this process can hold."""
         return self.db_pool_size + self.db_max_overflow
@@ -185,6 +211,8 @@ class Settings(BaseSettings):
     def validate_runtime(self) -> None:
         if self.bot_token is None:
             raise ValueError("BOT_TOKEN is required to run the Telegram bot")
+        if self.fsm_storage == "redis" and self.redis_url is None:
+            raise ValueError("REDIS_URL is required when FSM_STORAGE=redis")
         if self.ai_provider == "openai" and self.openai_api_key is None:
             raise ValueError("OPENAI_API_KEY is required when AI_PROVIDER=openai")
         if self.ai_provider == "gigachat":
