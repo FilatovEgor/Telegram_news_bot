@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.config import Settings
+from app.database.advisory_lock import PostgresAdvisoryLock
 from app.database.models import NewsSource, SourceRun
 from app.repositories.articles import get_or_create_source, save_discovered_articles
 from app.repositories.duplicates import record_duplicate_candidates_for_articles
@@ -54,10 +55,12 @@ class IngestionService:
         sources: list[NewsSourceAdapter],
         session_factory: async_sessionmaker,
         settings: Settings | None = None,
+        distributed_lock: PostgresAdvisoryLock | None = None,
     ) -> None:
         self._sources = sources
         self._session_factory = session_factory
         self._settings = settings
+        self._distributed_lock = distributed_lock
 
     async def _fetch_sources(self, limit: int) -> list[_FetchedSource]:
         """Fetch sources concurrently, but keep results in configured source order."""
@@ -218,6 +221,11 @@ class IngestionService:
             )
 
     async def ingest(self, limit: int = 50) -> IngestionResult:
+        if self._distributed_lock is not None:
+            return await self._distributed_lock.run(lambda: self._ingest_unlocked(limit))
+        return await self._ingest_unlocked(limit)
+
+    async def _ingest_unlocked(self, limit: int) -> IngestionResult:
         run_started = time.monotonic()
         checked = discovered = created = duplicates = failures = 0
         fetched_sources = await self._fetch_sources(limit)
