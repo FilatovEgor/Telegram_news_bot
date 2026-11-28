@@ -50,7 +50,8 @@ async def test_readiness_fails_when_telegram_is_unavailable():
         await check_readiness(FakeEngine(), bot)
 
 
-def test_ingestion_is_scheduled_immediately_without_startup_wait():
+@pytest.mark.asyncio
+async def test_ingestion_is_scheduled_immediately_without_startup_wait():
     class FakeIngestionService:
         async def ingest(self, limit):
             return limit
