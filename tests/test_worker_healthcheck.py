@@ -1,6 +1,4 @@
 import pytest
-from sqlalchemy import text
-
 from app import worker_healthcheck
 from app.config import Settings
 
