@@ -6,6 +6,7 @@ from aiogram.types import Message
 
 from app.bot.routers.workflow import dashboard_keyboard
 from app.config import Settings
+from app.database.advisory_lock import AdvisoryLockUnavailableError
 from app.services.ingestion import IngestionService
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,9 @@ async def load_command(message: Message, settings: Settings, ingestion_service: 
     await message.answer("Checking configured news sources…")
     try:
         result = await ingestion_service.ingest(limit=settings.source_fetch_limit)
+    except AdvisoryLockUnavailableError:
+        await message.answer("Another bot instance is already scanning the feeds. Please wait for it to finish.")
+        return
     except Exception:
         logger.exception("Manual ingestion failed")
         await message.answer("News ingestion failed. The error has been logged for investigation.")
