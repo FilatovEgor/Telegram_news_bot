@@ -313,7 +313,7 @@ def test_ip_webhook_certificate_path_must_exist(tmp_path):
 
 def test_webhook_secret_can_be_loaded_from_file_when_env_secret_is_unset(tmp_path):
     secret_file = tmp_path / "webhook_token"
-    secret_file.write_text("a" * 64 + "\\n", encoding="utf-8")
+    secret_file.write_text("a" * 64 + "\n", encoding="utf-8")
 
     settings = Settings(
         database_url="postgresql+asyncpg://user:pass@localhost/news",
