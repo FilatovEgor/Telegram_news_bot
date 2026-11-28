@@ -41,8 +41,7 @@ async def _load_title_candidates(
             .select_from(
                 incoming.join(
                     Article,
-                    func.similarity(func.lower(Article.title), incoming.c.normalized_title)
-                    >= prefilter_threshold,
+                    func.lower(Article.title).bool_op("%")(incoming.c.normalized_title),
                 )
             )
             .where(
