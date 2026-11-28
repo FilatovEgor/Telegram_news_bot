@@ -67,6 +67,24 @@ Every application instance may register the same ingestion schedule, but the ing
 
 The advisory lock coordinates ingestion only. It does not elect Telegram update consumers: multi-instance Telegram delivery still requires webhook ingress rather than multiple long-polling consumers. The single-instance polling deployment remains unchanged.
 
+## Multi-instance webhook deployment
+
+Polling remains the default and is intended for the existing single-instance setup. Do not scale a polling bot: Telegram permits either long polling or a webhook for a bot, not both, and long polling is a single-consumer update transport.
+
+For a multi-instance deployment, configure a public HTTPS origin and a strong webhook secret in the untracked `.env` file:
+
+    BOT_TRANSPORT=webhook
+    WEBHOOK_BASE_URL=https://bot.example.com
+    WEBHOOK_SECRET_TOKEN=<random-secret>
+
+Generate a valid secret with `python -c "import secrets; print(secrets.token_urlsafe(32))"`. Terminate TLS at a trusted reverse proxy/load balancer and route `/telegram/webhook` to port 8080 on the bot service. The bot binds internally to `0.0.0.0:8080`; the webhook handler verifies Telegram's `X-Telegram-Bot-Api-Secret-Token` header. Keep the bot containers private behind the proxy and restrict direct access to their webhook port.
+
+After PR #9 (Redis FSM) and PR #10 (PostgreSQL advisory lock) are merged, a Redis-backed webhook deployment can be started with:
+
+    docker compose -f docker-compose.yml -f docker-compose.redis.yml -f docker-compose.webhook.yml up --build -d --scale bot=3
+
+All replicas share Redis FSM state and PostgreSQL. Their scheduled/manual ingestion attempts are serialized by the PostgreSQL advisory lock. The default `docker compose up` command still uses one polling instance and in-memory FSM. This scaling path does not change approval or publication semantics.
+
 ## Ingestion quality
 
 Transient network errors, HTTP 429 and HTTP 5xx responses are retried with bounded exponential backoff. A shared request limiter spaces requests across adapters, and MRC article concurrency is configurable.
