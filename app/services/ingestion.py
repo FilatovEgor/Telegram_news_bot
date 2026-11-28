@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 from dataclasses import dataclass
@@ -38,6 +39,15 @@ class SourceHealth:
     last_error: str | None
 
 
+@dataclass(slots=True, frozen=True)
+class _FetchedSource:
+    result: SourceFetchResult
+    error: Exception | None
+    started_at: datetime
+    started_clock: float
+    duration_ms: int
+
+
 class IngestionService:
     def __init__(
         self,
@@ -49,38 +59,70 @@ class IngestionService:
         self._session_factory = session_factory
         self._settings = settings
 
+    async def _fetch_sources(self, limit: int) -> list[_FetchedSource]:
+        """Fetch sources concurrently, but keep results in configured source order."""
+        concurrency = (
+            self._settings.source_fetch_concurrency if self._settings else 4
+        )
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def fetch_one(adapter: NewsSourceAdapter) -> _FetchedSource:
+            async with semaphore:
+                started_at = datetime.now(UTC)
+                started_clock = time.monotonic()
+                try:
+                    raw_result = await adapter.fetch_latest(limit=limit)
+                    if isinstance(raw_result, SourceFetchResult):
+                        result = raw_result
+                    else:
+                        articles = list(raw_result)
+                        result = SourceFetchResult(
+                            articles=articles,
+                            attempted_count=len(articles),
+                        )
+                    error = None
+                except Exception as exc:
+                    result = SourceFetchResult()
+                    error = exc
+                    logger.warning(
+                        "News source fetch failed: %s (%s)",
+                        adapter.key,
+                        type(exc).__name__,
+                    )
+                duration_ms = max(
+                    0, int((time.monotonic() - started_clock) * 1000)
+                )
+                return _FetchedSource(
+                    result=result,
+                    error=error,
+                    started_at=started_at,
+                    started_clock=started_clock,
+                    duration_ms=duration_ms,
+                )
+
+        return await asyncio.gather(
+            *(fetch_one(adapter) for adapter in self._sources)
+        )
+
     async def ingest(self, limit: int = 50) -> IngestionResult:
         run_started = time.monotonic()
         checked = discovered = created = duplicates = failures = 0
-        for adapter in self._sources:
+        fetched_sources = await self._fetch_sources(limit)
+
+        # Persist in configured order and with one independent DB session per source.
+        # No AsyncSession is shared between concurrent source-fetch tasks.
+        for adapter, fetched in zip(self._sources, fetched_sources, strict=True):
             checked += 1
-            started_at = datetime.now(UTC)
-            started_clock = time.monotonic()
-            fetch_error: Exception | None = None
-            fetch_result = SourceFetchResult()
-
-            try:
-                raw_result = await adapter.fetch_latest(limit=limit)
-                if isinstance(raw_result, SourceFetchResult):
-                    fetch_result = raw_result
-                else:
-                    articles = list(raw_result)
-                    fetch_result = SourceFetchResult(
-                        articles=articles,
-                        attempted_count=len(articles),
-                    )
-            except Exception as exc:
-                fetch_error = exc
-                logger.warning(
-                    "News source fetch failed: %s (%s)",
-                    adapter.key,
-                    type(exc).__name__,
-                )
-
-            duration_ms = max(0, int((time.monotonic() - started_clock) * 1000))
+            started_at = fetched.started_at
+            fetch_result = fetched.result
+            fetch_error = fetched.error
+            duration_ms = fetched.duration_ms
             finished_at = datetime.now(UTC)
             discovered += fetch_result.fetched_count
-            failures += max(1, fetch_result.failed_count) if fetch_error else fetch_result.failed_count
+            failures += (
+                max(1, fetch_result.failed_count)
+                if fetch_error else fetch_result.failed_count
+            )
             source_created = source_duplicates = 0
             base_url = getattr(adapter, "base_url", "") or None
             kind = getattr(adapter, "kind", "rss")
@@ -120,7 +162,11 @@ class IngestionService:
                     error_text = type(fetch_error).__name__
                     source.consecutive_failures += 1
                 else:
-                    status = "PARTIAL" if fetch_result.failed_count or fetch_result.warnings else "SUCCESS"
+                    status = (
+                        "PARTIAL"
+                        if fetch_result.failed_count or fetch_result.warnings
+                        else "SUCCESS"
+                    )
                     error_text = "; ".join(fetch_result.warnings)[:1000] or None
                     source.consecutive_failures = 0
                     source.last_success_at = finished_at
