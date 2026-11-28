@@ -13,6 +13,15 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+  migrate:
+    build: .
+    profiles: ["migration"]
+    restart: "no"
+    env_file: [.env]
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["alembic", "upgrade", "head"]
   bot:
     build: .
     restart: unless-stopped
@@ -20,6 +29,5 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    command: ["sh", "-c", "alembic upgrade head && python -m app"]
 volumes:
   postgres_data:

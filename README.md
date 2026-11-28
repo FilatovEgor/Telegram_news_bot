@@ -30,10 +30,26 @@ Startup logs report configured pool capacity. Pool overflow transitions and inva
 2. Set BOT_TOKEN, OPENAI_API_KEY, ADMIN_IDS and a strong POSTGRES_PASSWORD.
 3. Configure RSS_FEEDS as comma-separated feed URLs. MRC is enabled by default.
 4. Set PUBLISH_CHANNEL_ID for the source-language channel and PUBLISH_CHANNEL_ID_EN for the English channel. Add the bot to both channels with permission to post.
-5. Run docker compose up --build -d.
-6. Follow logs with docker compose logs -f bot.
+5. Start PostgreSQL with `docker compose up -d db`.
+6. Apply schema migrations explicitly with `docker compose --profile migration run --rm migrate`.
+7. Start the bot with `docker compose up --build -d bot`.
+8. Follow logs with `docker compose logs -f bot`.
 
-The container applies Alembic migrations before starting the bot. PostgreSQL data is persisted in the postgres_data volume. The bot performs an initial ingestion and repeats ingestion on the configured interval. /load triggers manual ingestion and /sources shows source health. Editorial and publishing commands are restricted to configured ADMIN_IDS.
+PostgreSQL data is persisted in the postgres_data volume. The bot begins Telegram polling after required dependency checks; initial ingestion runs in the background and repeats on the configured interval. /load triggers manual ingestion and /sources shows source health. Editorial and publishing commands are restricted to configured ADMIN_IDS.
+
+## Deployment and startup
+
+Database schema changes are an explicit deployment operation; the bot container never runs Alembic automatically.
+
+1. Copy `.env.example` to `.env` and configure the required secrets and database settings.
+2. Start PostgreSQL: `docker compose up -d db`.
+3. Apply migrations as a separate deployment step: `docker compose --profile migration run --rm migrate`.
+4. Start the bot: `docker compose up --build -d bot`.
+5. Check readiness and logs: `docker compose ps` and `docker compose logs -f bot`.
+
+The migration service is opt-in under the `migration` profile. The bot service does not depend on it and cannot mutate the schema during an ordinary restart. Run the migration step once for each deployment before starting application instances.
+
+At startup the bot verifies PostgreSQL with `SELECT 1` and verifies the configured Telegram token with `getMe`. The container healthcheck repeats these core dependency checks. Optional source ingestion is scheduled immediately in the background and then runs at `INGESTION_INTERVAL_MINUTES`; it does not delay Telegram polling. A source outage therefore affects ingestion telemetry, not the bot's ability to accept Telegram updates. The OpenAI provider is initialized for use by editorial actions and is not a startup readiness dependency.
 
 ## Ingestion quality
 
