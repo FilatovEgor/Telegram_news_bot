@@ -1,5 +1,7 @@
+import ipaddress
 import re
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
@@ -28,6 +30,7 @@ class Settings(BaseSettings):
     webhook_base_url: str | None = None
     webhook_path: str = "/telegram/webhook"
     webhook_secret_token: SecretStr | None = None
+    webhook_certificate_path: str | None = None
     webhook_host: str = "0.0.0.0"
     webhook_port: int = 8080
 
@@ -115,6 +118,13 @@ class Settings(BaseSettings):
         if secret is not None and (len(secret) > 256 or not re.fullmatch(r"[A-Za-z0-9_-]+", secret)):
             raise ValueError("WEBHOOK_SECRET_TOKEN must use 1-256 letters, digits, underscores or hyphens")
         return value
+
+    @field_validator("webhook_certificate_path", mode="before")
+    @classmethod
+    def normalize_webhook_certificate_path(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        return value.strip()
 
     @field_validator("webhook_path")
     @classmethod
@@ -297,6 +307,16 @@ class Settings(BaseSettings):
                 raise ValueError("WEBHOOK_SECRET_TOKEN is required when BOT_TRANSPORT=webhook")
             if self.drop_pending_updates:
                 raise ValueError("DROP_PENDING_UPDATES must be false in webhook mode")
+            if self.webhook_certificate_path is not None:
+                parsed = urlsplit(self.webhook_base_url)
+                try:
+                    ipaddress.IPv4Address(parsed.hostname or "")
+                except ValueError as exc:
+                    raise ValueError(
+                        "WEBHOOK_CERTIFICATE_PATH is only supported with an IP-address webhook URL"
+                    ) from exc
+                if not Path(self.webhook_certificate_path).is_file():
+                    raise ValueError("WEBHOOK_CERTIFICATE_PATH must point to an existing PEM certificate file")
         if self.ai_provider == "openai" and self.openai_api_key is None:
             raise ValueError("OPENAI_API_KEY is required when AI_PROVIDER=openai")
         if self.ai_provider == "gigachat":

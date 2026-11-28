@@ -1,0 +1,55 @@
+services:
+  certgen:
+    image: tg-bot-webhook-certgen:local
+    build:
+      context: .
+      dockerfile: deploy/ip-tls/Dockerfile.certgen
+    restart: "no"
+    environment:
+      WEBHOOK_PUBLIC_IP: ${WEBHOOK_PUBLIC_IP:?Set WEBHOOK_PUBLIC_IP in .env}
+      WEBHOOK_CERT_REGENERATE: ${WEBHOOK_CERT_REGENERATE:-false}
+    volumes:
+      - webhook_public_cert:/public
+      - webhook_private_key:/private
+
+  bot:
+    environment:
+      BOT_TRANSPORT: webhook
+      WEBHOOK_BASE_URL: https://${WEBHOOK_PUBLIC_IP:?Set WEBHOOK_PUBLIC_IP in .env}
+      WEBHOOK_CERTIFICATE_PATH: /run/webhook-certificate/telegram-webhook-public.pem
+      WEBHOOK_SECRET_TOKEN: ${WEBHOOK_SECRET_TOKEN:?Set WEBHOOK_SECRET_TOKEN in .env}
+      WEBHOOK_HOST: 0.0.0.0
+      WEBHOOK_PORT: 8080
+      DROP_PENDING_UPDATES: "false"
+    volumes:
+      - webhook_public_cert:/run/webhook-certificate:ro
+    expose:
+      - "8080"
+    depends_on:
+      certgen:
+        condition: service_completed_successfully
+
+  proxy:
+    image: nginx:1.28-alpine
+    restart: unless-stopped
+    depends_on:
+      certgen:
+        condition: service_completed_successfully
+      bot:
+        condition: service_started
+    ports:
+      - "443:443"
+    volumes:
+      - ./deploy/ip-tls/nginx.conf:/etc/nginx/nginx.conf:ro
+      - webhook_public_cert:/etc/nginx/certs/public:ro
+      - webhook_private_key:/etc/nginx/certs/private:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-check-certificate -q -O /dev/null https://127.0.0.1/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  webhook_public_cert:
+  webhook_private_key:

@@ -255,3 +255,57 @@ def test_ingestion_scheduler_is_enabled_by_default_for_single_instance():
     settings = Settings(database_url="postgresql+asyncpg://user:pass@localhost/news")
 
     assert settings.ingestion_scheduler_enabled is True
+
+
+def test_webhook_certificate_path_is_optional_and_blank_is_normalized():
+    settings = Settings(
+        database_url="postgresql+asyncpg://user:pass@localhost/news",
+        webhook_certificate_path="   ",
+    )
+    assert settings.webhook_certificate_path is None
+
+
+def test_ip_webhook_certificate_requires_ip_url_and_existing_file(tmp_path):
+    certificate = tmp_path / "telegram-webhook-public.pem"
+    certificate.write_text("test certificate", encoding="utf-8")
+    settings = Settings(
+        database_url="postgresql+asyncpg://user:pass@localhost/news",
+        bot_token="test-token",
+        openai_api_key="test-key",
+        bot_transport="webhook",
+        webhook_base_url="https://203.0.113.10",
+        webhook_secret_token="secret_token-123",
+        webhook_certificate_path=str(certificate),
+    )
+    settings.validate_runtime()
+    assert settings.webhook_certificate_path == str(certificate)
+
+
+def test_ip_webhook_certificate_rejects_domain_name(tmp_path):
+    certificate = tmp_path / "telegram-webhook-public.pem"
+    certificate.write_text("test certificate", encoding="utf-8")
+    settings = Settings(
+        database_url="postgresql+asyncpg://user:pass@localhost/news",
+        bot_token="test-token",
+        openai_api_key="test-key",
+        bot_transport="webhook",
+        webhook_base_url="https://news.example.com",
+        webhook_secret_token="secret_token-123",
+        webhook_certificate_path=str(certificate),
+    )
+    with pytest.raises(ValueError, match="IP-address webhook URL"):
+        settings.validate_runtime()
+
+
+def test_ip_webhook_certificate_path_must_exist(tmp_path):
+    settings = Settings(
+        database_url="postgresql+asyncpg://user:pass@localhost/news",
+        bot_token="test-token",
+        openai_api_key="test-key",
+        bot_transport="webhook",
+        webhook_base_url="https://203.0.113.10",
+        webhook_secret_token="secret_token-123",
+        webhook_certificate_path=str(tmp_path / "missing.pem"),
+    )
+    with pytest.raises(ValueError, match="existing PEM certificate file"):
+        settings.validate_runtime()
