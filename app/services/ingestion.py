@@ -7,9 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.config import Settings
-from app.database.models import Article, NewsSource, SourceRun
-from app.repositories.articles import get_or_create_source, save_discovered_article
-from app.repositories.duplicates import record_duplicate_candidates
+from app.database.models import NewsSource, SourceRun
+from app.repositories.articles import get_or_create_source, save_discovered_articles
+from app.repositories.duplicates import record_duplicate_candidates_for_articles
 from app.sources.base import NewsSource as NewsSourceAdapter
 from app.sources.base import SourceFetchResult
 
@@ -93,25 +93,26 @@ class IngestionService:
                     base_url,
                 )
                 if fetch_error is None:
-                    for item in fetch_result.articles:
-                        article_id = await save_discovered_article(session, source, item)
-                        if article_id is None:
-                            continue
-                        source_created += 1
-                        article = await session.get(Article, article_id)
-                        if article is not None:
-                            source_duplicates += await record_duplicate_candidates(
-                                session,
-                                article,
-                                lookback_days=self._settings.duplicate_lookback_days if self._settings else 30,
-                                similarity_threshold=(
-                                    self._settings.duplicate_title_similarity_threshold
-                                    if self._settings else 0.92
-                                ),
-                                candidate_limit=(
-                                    self._settings.duplicate_candidate_limit if self._settings else 300
-                                ),
-                            )
+                    new_articles = await save_discovered_articles(
+                        session,
+                        source,
+                        fetch_result.articles,
+                    )
+                    source_created = len(new_articles)
+                    source_duplicates = await record_duplicate_candidates_for_articles(
+                        session,
+                        new_articles,
+                        lookback_days=(
+                            self._settings.duplicate_lookback_days if self._settings else 30
+                        ),
+                        similarity_threshold=(
+                            self._settings.duplicate_title_similarity_threshold
+                            if self._settings else 0.92
+                        ),
+                        candidate_limit=(
+                            self._settings.duplicate_candidate_limit if self._settings else 300
+                        ),
+                    )
 
                 if fetch_error is not None:
                     status = "FAILED"
