@@ -9,4 +9,5 @@ COPY scripts ./scripts
 COPY alembic.ini ./
 RUN pip install --upgrade pip && pip install .
 USER app
-CMD ["sh", "-c", "alembic upgrade head && python -m app"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 CMD ["python", "-m", "app.healthcheck"]
+CMD ["python", "-m", "app"]
