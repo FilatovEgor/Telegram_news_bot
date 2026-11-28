@@ -342,12 +342,10 @@ def test_webhook_environment_secret_takes_precedence_over_secret_file(tmp_path):
 
 
 def test_missing_webhook_secret_file_fails_with_safe_error(tmp_path):
-    settings = Settings(
-        database_url="postgresql+asyncpg://user:pass@localhost/news",
-        bot_transport="webhook",
-        webhook_base_url="https://news.example.com",
-        webhook_secret_token_file=str(tmp_path / "missing"),
-    )
-
-    with pytest.raises(ValueError, match="WEBHOOK_SECRET_TOKEN_FILE"):
-        settings.validate_runtime()
+    with pytest.raises(ValidationError, match="WEBHOOK_SECRET_TOKEN_FILE"):
+        Settings(
+            database_url="postgresql+asyncpg://user:pass@localhost/news",
+            bot_transport="webhook",
+            webhook_base_url="https://news.example.com",
+            webhook_secret_token_file=str(tmp_path / "missing"),
+        )
