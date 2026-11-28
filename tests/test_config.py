@@ -95,3 +95,11 @@ def test_database_observability_threshold_defaults_and_validation():
             database_url="postgresql+asyncpg://user:pass@localhost/news",
             db_slow_query_threshold_ms=0,
         )
+
+
+def test_source_persist_batch_size_must_be_positive():
+    with pytest.raises(ValidationError):
+        Settings(
+            database_url="postgresql+asyncpg://user:pass@localhost/news",
+            source_persist_batch_size=0,
+        )
