@@ -12,7 +12,7 @@ from app.database.models import NewsSource, SourceRun
 from app.repositories.articles import get_or_create_source, save_discovered_articles
 from app.repositories.duplicates import record_duplicate_candidates_for_articles
 from app.sources.base import NewsSource as NewsSourceAdapter
-from app.sources.base import SourceFetchResult
+from app.sources.base import SourceArticle, SourceFetchResult
 
 logger = logging.getLogger(__name__)
 
@@ -105,99 +105,167 @@ class IngestionService:
             *(fetch_one(adapter) for adapter in self._sources)
         )
 
+    def _persist_batch_size(self) -> int:
+        return (
+            self._settings.source_persist_batch_size
+            if self._settings else 100
+        )
+
+    async def _persist_article_chunk(
+        self,
+        adapter: NewsSourceAdapter,
+        articles: list[SourceArticle],
+    ) -> tuple[int, int]:
+        """Persist one bounded chunk in a short, self-contained transaction."""
+        base_url = getattr(adapter, "base_url", "") or None
+        kind = getattr(adapter, "kind", "rss")
+        async with self._session_factory() as session, session.begin():
+            source = await get_or_create_source(
+                session,
+                adapter.key,
+                adapter.name,
+                kind,
+                base_url,
+            )
+            new_articles = await save_discovered_articles(
+                session,
+                source,
+                articles,
+            )
+            duplicate_count = await record_duplicate_candidates_for_articles(
+                session,
+                new_articles,
+                lookback_days=(
+                    self._settings.duplicate_lookback_days if self._settings else 30
+                ),
+                similarity_threshold=(
+                    self._settings.duplicate_title_similarity_threshold
+                    if self._settings else 0.92
+                ),
+                candidate_limit=(
+                    self._settings.duplicate_candidate_limit if self._settings else 300
+                ),
+            )
+            return len(new_articles), duplicate_count
+
+    async def _record_source_run(
+        self,
+        adapter: NewsSourceAdapter,
+        fetched: _FetchedSource,
+        *,
+        created: int,
+        duplicates: int,
+        persistence_error: Exception | None = None,
+    ) -> None:
+        base_url = getattr(adapter, "base_url", "") or None
+        kind = getattr(adapter, "kind", "rss")
+        fetch_result = fetched.result
+        failed_count = fetch_result.failed_count
+        error_parts = list(fetch_result.warnings)
+
+        if fetched.error is not None:
+            failed_count = max(1, failed_count)
+            error_parts.append(type(fetched.error).__name__)
+        if persistence_error is not None:
+            failed_count += 1
+            error_parts.append(f"persistence: {type(persistence_error).__name__}")
+
+        if fetched.error is not None:
+            status = "FAILED"
+        elif persistence_error is not None:
+            status = "PARTIAL" if created else "FAILED"
+        elif fetch_result.failed_count or fetch_result.warnings:
+            status = "PARTIAL"
+        else:
+            status = "SUCCESS"
+
+        error_text = "; ".join(error_parts)[:1000] or None
+        finished_at = datetime.now(UTC)
+        async with self._session_factory() as session, session.begin():
+            source = await get_or_create_source(
+                session,
+                adapter.key,
+                adapter.name,
+                kind,
+                base_url,
+            )
+            if status == "SUCCESS" or status == "PARTIAL" and fetched.error is None:
+                source.consecutive_failures = 0
+                source.last_success_at = fetched.finished_at
+            else:
+                source.consecutive_failures += 1
+
+            source.last_status = status
+            source.last_attempt_at = fetched.started_at
+            source.last_duration_ms = fetched.duration_ms
+            source.last_fetched_count = fetch_result.fetched_count
+            source.last_error = error_text
+            session.add(
+                SourceRun(
+                    source_id=source.id,
+                    status=status,
+                    started_at=fetched.started_at,
+                    finished_at=finished_at,
+                    duration_ms=fetched.duration_ms,
+                    attempted_count=fetch_result.attempted_count,
+                    fetched_count=fetch_result.fetched_count,
+                    failed_count=failed_count,
+                    created_count=created,
+                    duplicate_count=duplicates,
+                    error_text=error_text,
+                    warnings=fetch_result.warnings,
+                )
+            )
+
     async def ingest(self, limit: int = 50) -> IngestionResult:
         run_started = time.monotonic()
         checked = discovered = created = duplicates = failures = 0
         fetched_sources = await self._fetch_sources(limit)
 
-        # Persist in configured order and with one independent DB session per source.
-        # No AsyncSession is shared between concurrent source-fetch tasks.
+        # Fetches run concurrently, but persistence remains sequential per source.
+        # Every chunk has its own transaction; no AsyncSession is shared.
         for adapter, fetched in zip(self._sources, fetched_sources, strict=True):
             checked += 1
-            started_at = fetched.started_at
-            finished_at = fetched.finished_at
             fetch_result = fetched.result
-            fetch_error = fetched.error
-            duration_ms = fetched.duration_ms
             discovered += fetch_result.fetched_count
-            failures += (
-                max(1, fetch_result.failed_count)
-                if fetch_error else fetch_result.failed_count
-            )
             source_created = source_duplicates = 0
-            base_url = getattr(adapter, "base_url", "") or None
-            kind = getattr(adapter, "kind", "rss")
+            persistence_error: Exception | None = None
 
-            async with self._session_factory() as session, session.begin():
-                source = await get_or_create_source(
-                    session,
-                    adapter.key,
-                    adapter.name,
-                    kind,
-                    base_url,
-                )
-                if fetch_error is None:
-                    new_articles = await save_discovered_articles(
-                        session,
-                        source,
-                        fetch_result.articles,
-                    )
-                    source_created = len(new_articles)
-                    source_duplicates = await record_duplicate_candidates_for_articles(
-                        session,
-                        new_articles,
-                        lookback_days=(
-                            self._settings.duplicate_lookback_days if self._settings else 30
-                        ),
-                        similarity_threshold=(
-                            self._settings.duplicate_title_similarity_threshold
-                            if self._settings else 0.92
-                        ),
-                        candidate_limit=(
-                            self._settings.duplicate_candidate_limit if self._settings else 300
-                        ),
-                    )
+            if fetched.error is None:
+                batch_size = self._persist_batch_size()
+                for offset in range(0, len(fetch_result.articles), batch_size):
+                    chunk = fetch_result.articles[offset : offset + batch_size]
+                    try:
+                        chunk_created, chunk_duplicates = await self._persist_article_chunk(
+                            adapter,
+                            chunk,
+                        )
+                    except Exception as exc:
+                        persistence_error = exc
+                        logger.exception(
+                            "News source persistence failed: %s chunk_start=%d",
+                            adapter.key,
+                            offset,
+                        )
+                        break
+                    source_created += chunk_created
+                    source_duplicates += chunk_duplicates
 
-                if fetch_error is not None:
-                    status = "FAILED"
-                    error_text = type(fetch_error).__name__
-                    source.consecutive_failures += 1
-                else:
-                    status = (
-                        "PARTIAL"
-                        if fetch_result.failed_count or fetch_result.warnings
-                        else "SUCCESS"
-                    )
-                    error_text = "; ".join(fetch_result.warnings)[:1000] or None
-                    source.consecutive_failures = 0
-                    source.last_success_at = finished_at
-
-                source.last_status = status
-                source.last_attempt_at = started_at
-                source.last_duration_ms = duration_ms
-                source.last_fetched_count = fetch_result.fetched_count
-                source.last_error = error_text
-                session.add(
-                    SourceRun(
-                        source_id=source.id,
-                        status=status,
-                        started_at=started_at,
-                        finished_at=finished_at,
-                        duration_ms=duration_ms,
-                        attempted_count=fetch_result.attempted_count,
-                        fetched_count=fetch_result.fetched_count,
-                        failed_count=(
-                            fetch_result.failed_count if fetch_error is None
-                            else max(1, fetch_result.failed_count)
-                        ),
-                        created_count=source_created,
-                        duplicate_count=source_duplicates,
-                        error_text=error_text,
-                        warnings=fetch_result.warnings,
-                    )
-                )
+            await self._record_source_run(
+                adapter,
+                fetched,
+                created=source_created,
+                duplicates=source_duplicates,
+                persistence_error=persistence_error,
+            )
             created += source_created
             duplicates += source_duplicates
+            failures += fetch_result.failed_count
+            if fetched.error is not None or persistence_error is not None:
+                failures += max(
+                    1 if fetched.error is not None else 0,
+                    1 if persistence_error is not None else 0,
+                )
 
         result = IngestionResult(checked, discovered, created, duplicates, failures)
         logger.info(
