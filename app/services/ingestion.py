@@ -44,7 +44,7 @@ class _FetchedSource:
     result: SourceFetchResult
     error: Exception | None
     started_at: datetime
-    started_clock: float
+    finished_at: datetime
     duration_ms: int
 
 
@@ -89,6 +89,7 @@ class IngestionService:
                         adapter.key,
                         type(exc).__name__,
                     )
+                finished_at = datetime.now(UTC)
                 duration_ms = max(
                     0, int((time.monotonic() - started_clock) * 1000)
                 )
@@ -96,7 +97,7 @@ class IngestionService:
                     result=result,
                     error=error,
                     started_at=started_at,
-                    started_clock=started_clock,
+                    finished_at=finished_at,
                     duration_ms=duration_ms,
                 )
 
@@ -114,10 +115,10 @@ class IngestionService:
         for adapter, fetched in zip(self._sources, fetched_sources, strict=True):
             checked += 1
             started_at = fetched.started_at
+            finished_at = fetched.finished_at
             fetch_result = fetched.result
             fetch_error = fetched.error
             duration_ms = fetched.duration_ms
-            finished_at = datetime.now(UTC)
             discovered += fetch_result.fetched_count
             failures += (
                 max(1, fetch_result.failed_count)
