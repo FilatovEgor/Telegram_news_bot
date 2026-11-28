@@ -310,13 +310,13 @@ class Settings(BaseSettings):
             if self.webhook_certificate_path is not None:
                 parsed = urlsplit(self.webhook_base_url)
                 try:
-                    ipaddress.ip_address(parsed.hostname or "")
+                    ipaddress.IPv4Address(parsed.hostname or "")
                 except ValueError as exc:
                     raise ValueError(
                         "WEBHOOK_CERTIFICATE_PATH is only supported with an IP-address webhook URL"
                     ) from exc
                 if not Path(self.webhook_certificate_path).is_file():
-                    raise ValueError("WEBHOOK_CERTIFICATE_PATH must point to a readable PEM certificate file")
+                    raise ValueError("WEBHOOK_CERTIFICATE_PATH must point to an existing PEM certificate file")
         if self.ai_provider == "openai" and self.openai_api_key is None:
             raise ValueError("OPENAI_API_KEY is required when AI_PROVIDER=openai")
         if self.ai_provider == "gigachat":
