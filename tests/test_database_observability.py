@@ -43,8 +43,8 @@ def test_pool_observability_logs_overflow_transitions_without_connection_data(ca
         max_overflow=1,
     )
     try:
-        install_pool_observability(engine, max_overflow=1)
         with caplog.at_level(logging.INFO, logger="app.database.observability"):
+            install_pool_observability(engine, max_overflow=1)
             base_connection = engine.connect()
             overflow_connection = engine.connect()
             overflow_connection.close()
