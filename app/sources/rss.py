@@ -33,7 +33,7 @@ def _entry_content(entry: object) -> str:
 def _entry_fields(entry: object) -> tuple[str, str, str, datetime | None, str]:
     raw_url = str(getattr(entry, "link", "")).strip()
     title = str(getattr(entry, "title", "")).strip()
-    external_id = str(getattr(entry, "id", "") or raw_url).strip()
+    external_id = str(getattr(entry, "id", "")).strip()
     return raw_url, title, external_id, _entry_date(entry), _entry_content(entry)
 
 
