@@ -1,8 +1,8 @@
 """Core dependency readiness checks shared by startup and container healthcheck."""
 
 from aiogram import Bot
-from sqlalchemy import text
 from redis.asyncio import Redis
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 
