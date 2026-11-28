@@ -79,7 +79,11 @@ For a multi-instance deployment, configure a public HTTPS origin and a strong we
 
 Generate a valid secret with `python -c "import secrets; print(secrets.token_urlsafe(32))"`. Terminate TLS at a trusted reverse proxy/load balancer and route `/telegram/webhook` to port 8080 on the bot service. The bot binds internally to `0.0.0.0:8080`; the webhook handler verifies Telegram's `X-Telegram-Bot-Api-Secret-Token` header. Keep the bot containers private behind the proxy and restrict direct access to their webhook port.
 
-After PR #9 (Redis FSM) and PR #10 (PostgreSQL advisory lock) are merged, a Redis-backed webhook deployment can be started with:
+After PR #9 (Redis FSM), PR #10 (PostgreSQL advisory lock), and this webhook PR are merged, apply migrations once:
+
+    docker compose --profile migration run --rm migrate
+
+Then start a Redis-backed webhook deployment:
 
     docker compose -f docker-compose.yml -f docker-compose.redis.yml -f docker-compose.webhook.yml up --build -d --scale bot=3
 
