@@ -4,9 +4,9 @@ import asyncio
 import logging
 import signal
 
-from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+from aiohttp import web
 
 from app.config import Settings
 
