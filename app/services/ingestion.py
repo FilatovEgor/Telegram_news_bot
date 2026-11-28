@@ -50,6 +50,7 @@ class IngestionService:
         self._settings = settings
 
     async def ingest(self, limit: int = 50) -> IngestionResult:
+        run_started = time.monotonic()
         checked = discovered = created = duplicates = failures = 0
         for adapter in self._sources:
             checked += 1
@@ -151,7 +152,18 @@ class IngestionService:
             created += source_created
             duplicates += source_duplicates
 
-        return IngestionResult(checked, discovered, created, duplicates, failures)
+        result = IngestionResult(checked, discovered, created, duplicates, failures)
+        logger.info(
+            "Ingestion run completed sources_checked=%d discovered=%d created=%d "
+            "duplicates=%d failures=%d duration_ms=%d",
+            result.sources_checked,
+            result.discovered,
+            result.created,
+            result.duplicates,
+            result.failures,
+            max(0, int((time.monotonic() - run_started) * 1000)),
+        )
+        return result
 
     async def source_health(self) -> list[SourceHealth]:
         async with self._session_factory() as session:
