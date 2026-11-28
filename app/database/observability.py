@@ -52,7 +52,6 @@ def install_slow_query_logging(engine: Any, threshold_ms: int = 250) -> None:
             )
 
 
-
 def install_pool_observability(engine: Any, *, max_overflow: int) -> None:
     """Report pool capacity and transitions into/out of overflow without query data."""
     if max_overflow < 0:
