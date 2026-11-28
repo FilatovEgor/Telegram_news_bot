@@ -60,3 +60,26 @@ def test_publish_channels_are_selected_by_language():
     assert settings.publish_channel_for("en") == "@news_en"
     with pytest.raises(ValueError, match="Only ru and en"):
         settings.publish_channel_for("de")
+
+
+def test_ai_concurrency_limits_have_bounded_defaults():
+    settings = Settings(database_url="postgresql+asyncpg://user:pass@localhost/news")
+    assert settings.ai_max_concurrent_requests == 3
+    assert settings.ai_max_editorial_concurrency == 2
+    assert settings.ai_max_translation_concurrency == 1
+
+
+@pytest.mark.parametrize(
+    "setting",
+    [
+        "ai_max_concurrent_requests",
+        "ai_max_editorial_concurrency",
+        "ai_max_translation_concurrency",
+    ],
+)
+def test_ai_concurrency_limits_must_be_positive(setting):
+    with pytest.raises(ValidationError):
+        Settings(
+            database_url="postgresql+asyncpg://user:pass@localhost/news",
+            **{setting: 0},
+        )
