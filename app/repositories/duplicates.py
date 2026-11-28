@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import column, desc, or_, select, values
+from sqlalchemy import column, desc, func, or_, select, values
 from sqlalchemy.dialects.postgresql import TEXT, UUID as PG_UUID, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
